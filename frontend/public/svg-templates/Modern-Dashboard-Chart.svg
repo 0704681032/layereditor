@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#00d2ff"/>
+      <stop offset="100%" style="stop-color:#3a7bd5"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#f857a6"/>
+      <stop offset="100%" style="stop-color:#ff5858"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#00b09b"/>
+      <stop offset="100%" style="stop-color:#96c93d"/>
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff6a00"/>
+      <stop offset="100%" style="stop-color:#ee0979"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="400" height="300" rx="12" fill="url(#bgGrad)"/>
+  <!-- Grid lines -->
+  <g stroke="#ffffff10" stroke-width="1">
+    <line x1="50" y1="60" x2="370" y2="60"/>
+    <line x1="50" y1="120" x2="370" y2="120"/>
+    <line x1="50" y1="180" x2="370" y2="180"/>
+    <line x1="50" y1="240" x2="370" y2="240"/>
+  </g>
+  <!-- Bars -->
+  <rect x="70" y="100" width="28" height="140" rx="4" fill="url(#bar1)" opacity="0.85"/>
+  <rect x="110" y="140" width="28" height="100" rx="4" fill="url(#bar2)" opacity="0.85"/>
+  <rect x="150" y="80" width="28" height="160" rx="4" fill="url(#bar3)" opacity="0.85"/>
+  <rect x="190" y="120" width="28" height="120" rx="4" fill="url(#bar1)" opacity="0.85"/>
+  <rect x="230" y="60" width="28" height="180" rx="4" fill="url(#bar2)" opacity="0.85"/>
+  <rect x="270" y="90" width="28" height="150" rx="4" fill="url(#bar3)" opacity="0.85"/>
+  <rect x="310" y="70" width="28" height="170" rx="4" fill="url(#bar1)" opacity="0.85"/>
+  <!-- Trend line -->
+  <polyline points="84,95 124,135 164,75 204,115 244,55 284,85 324,65"
+    fill="none" stroke="url(#lineGrad)" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <!-- Dots on line -->
+  <g fill="#fff" filter="url(#glow)">
+    <circle cx="84" cy="95" r="4"/><circle cx="124" cy="135" r="4"/>
+    <circle cx="164" cy="75" r="4"/><circle cx="204" cy="115" r="4"/>
+    <circle cx="244" cy="55" r="4"/><circle cx="284" cy="85" r="4"/>
+    <circle cx="324" cy="65" r="4"/>
+  </g>
+  <!-- Labels -->
+  <text x="80" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Mon</text>
+  <text x="118" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Tue</text>
+  <text x="160" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Wed</text>
+  <text x="198" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Thu</text>
+  <text x="240" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Fri</text>
+  <text x="278" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Sat</text>
+  <text x="318" y="275" fill="#ffffff60" font-size="10" font-family="system-ui">Sun</text>
+</svg>

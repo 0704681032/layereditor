@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 260">
+  <defs>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#f8f9fa"/>
+    </linearGradient>
+    <linearGradient id="coverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1"/>
+      <stop offset="50%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#a78bfa"/>
+    </linearGradient>
+    <filter id="cardShadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#00000018"/>
+    </filter>
+    <clipPath id="avatarClip"><circle cx="180" cy="110" r="36"/></clipPath>
+  </defs>
+  <!-- Card -->
+  <rect x="10" y="10" width="340" height="240" rx="16" fill="url(#cardBg)" filter="url(#cardShadow)"/>
+  <!-- Cover -->
+  <rect x="10" y="10" width="340" height="90" rx="16" fill="url(#coverGrad)"/>
+  <rect x="10" y="70" width="340" height="30" fill="url(#coverGrad)"/>
+  <!-- Avatar circle -->
+  <circle cx="180" cy="110" r="38" fill="white"/>
+  <circle cx="180" cy="110" r="36" fill="#e2e8f0"/>
+  <circle cx="180" cy="100" r="14" fill="#94a3b8"/>
+  <ellipse cx="180" cy="128" rx="22" ry="12" fill="#94a3b8"/>
+  <!-- Name -->
+  <text x="180" y="170" text-anchor="middle" font-family="system-ui" font-weight="600" font-size="16" fill="#1e293b">Alex Designer</text>
+  <!-- Role -->
+  <text x="180" y="190" text-anchor="middle" font-family="system-ui" font-size="12" fill="#64748b">Senior UI/UX Designer</text>
+  <!-- Stats -->
+  <line x1="60" y1="210" x2="300" y2="210" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="120" y="238" text-anchor="middle" font-family="system-ui" font-size="14" font-weight="600" fill="#1e293b">1.2K</text>
+  <text x="120" y="250" text-anchor="middle" font-family="system-ui" font-size="9" fill="#94a3b8">Posts</text>
+  <text x="180" y="238" text-anchor="middle" font-family="system-ui" font-size="14" font-weight="600" fill="#1e293b">8.5K</text>
+  <text x="180" y="250" text-anchor="middle" font-family="system-ui" font-size="9" fill="#94a3b8">Followers</text>
+  <text x="240" y="238" text-anchor="middle" font-family="system-ui" font-size="14" font-weight="600" fill="#1e293b">324</text>
+  <text x="240" y="250" text-anchor="middle" font-family="system-ui" font-size="9" fill="#94a3b8">Following</text>
+</svg>

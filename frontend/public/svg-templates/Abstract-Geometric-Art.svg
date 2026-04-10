@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300">
+  <defs>
+    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="100%" style="stop-color:#764ba2"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f093fb"/>
+      <stop offset="100%" style="stop-color:#f5576c"/>
+    </linearGradient>
+    <linearGradient id="g3" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4facfe"/>
+      <stop offset="100%" style="stop-color:#00f2fe"/>
+    </linearGradient>
+    <linearGradient id="g4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#43e97b"/>
+      <stop offset="100%" style="stop-color:#38f9d7"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="300" fill="#0f0f23"/>
+  <!-- Rotating squares -->
+  <rect x="80" y="80" width="140" height="140" rx="8" fill="none" stroke="url(#g1)" stroke-width="2" transform="rotate(15,150,150)" opacity="0.7"/>
+  <rect x="95" y="95" width="110" height="110" rx="6" fill="none" stroke="url(#g2)" stroke-width="2" transform="rotate(30,150,150)" opacity="0.7"/>
+  <rect x="110" y="110" width="80" height="80" rx="4" fill="none" stroke="url(#g3)" stroke-width="2" transform="rotate(45,150,150)" opacity="0.7"/>
+  <rect x="125" y="125" width="50" height="50" rx="3" fill="none" stroke="url(#g4)" stroke-width="2" transform="rotate(60,150,150)" opacity="0.7"/>
+  <!-- Circles -->
+  <circle cx="150" cy="150" r="100" fill="none" stroke="url(#g1)" stroke-width="1.5" opacity="0.3"/>
+  <circle cx="150" cy="150" r="70" fill="none" stroke="url(#g2)" stroke-width="1" stroke-dasharray="8,4" opacity="0.4"/>
+  <circle cx="150" cy="150" r="40" fill="none" stroke="url(#g3)" stroke-width="1" opacity="0.5"/>
+  <!-- Decorative dots -->
+  <circle cx="150" cy="50" r="5" fill="url(#g1)" opacity="0.9"/>
+  <circle cx="240" cy="100" r="4" fill="url(#g2)" opacity="0.8"/>
+  <circle cx="250" cy="200" r="6" fill="url(#g3)" opacity="0.7"/>
+  <circle cx="150" cy="250" r="4" fill="url(#g4)" opacity="0.9"/>
+  <circle cx="50" cy="200" r="5" fill="url(#g1)" opacity="0.8"/>
+  <circle cx="60" cy="100" r="3" fill="url(#g2)" opacity="0.7"/>
+  <!-- Center diamond -->
+  <polygon points="150,120 170,150 150,180 130,150" fill="url(#g1)" opacity="0.6"/>
+  <!-- Connecting lines -->
+  <line x1="150" y1="50" x2="240" y2="100" stroke="#667eea" stroke-width="0.5" opacity="0.3"/>
+  <line x1="240" y1="100" x2="250" y2="200" stroke="#f093fb" stroke-width="0.5" opacity="0.3"/>
+  <line x1="250" y1="200" x2="150" y2="250" stroke="#4facfe" stroke-width="0.5" opacity="0.3"/>
+  <line x1="150" y1="250" x2="50" y2="200" stroke="#43e97b" stroke-width="0.5" opacity="0.3"/>
+  <line x1="50" y1="200" x2="60" y2="100" stroke="#667eea" stroke-width="0.5" opacity="0.3"/>
+  <line x1="60" y1="100" x2="150" y2="50" stroke="#f093fb" stroke-width="0.5" opacity="0.3"/>
+</svg>

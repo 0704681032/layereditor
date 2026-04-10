@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.editor.asset.mapper.AssetMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO editor_asset (owner_id, document_id, kind, filename, mime_type,
+                                  bucket, storage_key, file_size, width, height, sha256)
+        VALUES (#{ownerId}, #{documentId}, #{kind}, #{filename}, #{mimeType},
+                #{bucket}, #{storageKey}, #{fileSize}, #{width}, #{height}, #{sha256})
+    </insert>
+
+    <select id="selectById" resultType="com.example.editor.asset.entity.EditorAsset">
+        SELECT id, owner_id, document_id, kind, filename, mime_type,
+               bucket, storage_key, file_size, width, height, sha256, created_at, deleted_at
+        FROM editor_asset
+        WHERE id = #{id} AND deleted_at IS NULL
+    </select>
+
+    <select id="selectList" resultType="com.example.editor.asset.entity.EditorAsset">
+        SELECT id, owner_id, document_id, kind, filename, mime_type,
+               bucket, storage_key, file_size, width, height, sha256, created_at, deleted_at
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+        <if test="documentId != null">
+            AND document_id = #{documentId}
+        </if>
+        <if test="kind != null and kind != ''">
+            AND kind = #{kind}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByCondition" resultType="long">
+        SELECT COUNT(*)
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+        <if test="documentId != null">
+            AND document_id = #{documentId}
+        </if>
+        <if test="kind != null and kind != ''">
+            AND kind = #{kind}
+        </if>
+    </select>
+
+</mapper>

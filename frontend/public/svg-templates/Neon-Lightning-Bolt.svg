@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 200">
+  <defs>
+    <filter id="neonGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="100%" style="stop-color:#7b2ff7"/>
+    </linearGradient>
+  </defs>
+  <rect width="150" height="200" rx="8" fill="#0a0a1a"/>
+  <!-- Lightning bolt -->
+  <polygon points="90,10 40,95 70,95 55,190 110,90 80,90"
+    fill="url(#boltGrad)" filter="url(#neonGlow)" opacity="0.95"/>
+  <!-- Secondary glow layer -->
+  <polygon points="90,10 40,95 70,95 55,190 110,90 80,90"
+    fill="none" stroke="#00d4ff" stroke-width="1" filter="url(#neonGlow)" opacity="0.5"/>
+</svg>

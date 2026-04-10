@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="bg1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea"/>
+      <stop offset="50%" style="stop-color:#764ba2"/>
+      <stop offset="100%" style="stop-color:#f093fb"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFE566"/>
+      <stop offset="50%" style="stop-color:#FFD700"/>
+      <stop offset="100%" style="stop-color:#FFA500"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00f2fe"/>
+      <stop offset="100%" style="stop-color:#4facfe"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="20" stdDeviation="40" flood-color="#00000040"/>
+    </filter>
+  </defs>
+  <!-- Background -->
+  <rect width="1200" height="800" fill="url(#bg1)"/>
+  <!-- Decorative circles -->
+  <circle cx="1100" cy="100" r="200" fill="#ffffff10"/>
+  <circle cx="100" cy="700" r="250" fill="#ffffff08"/>
+  <circle cx="600" cy="400" r="300" fill="#ffffff05"/>
+  <!-- Grid pattern -->
+  <g opacity="0.1" stroke="#ffffff" stroke-width="0.5">
+    <line x1="0" y1="200" x2="1200" y2="200"/>
+    <line x1="0" y1="400" x2="1200" y2="400"/>
+    <line x1="0" y1="600" x2="1200" y2="600"/>
+    <line x1="300" y1="0" x2="300" y2="800"/>
+    <line x1="600" y1="0" x2="600" y2="800"/>
+    <line x1="900" y1="0" x2="900" y2="800"/>
+  </g>
+  <!-- Main content card -->
+  <rect x="80" y="80" width="1040" height="640" rx="32" fill="#ffffff15" filter="url(#shadow)"/>
+  <!-- Header -->
+  <text x="600" y="160" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="300" font-size="24" fill="#ffffff90">PREMIUM COLLECTION</text>
+  <!-- Main headline -->
+  <text x="600" y="260" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="900" font-size="72" fill="white" filter="url(#glow)">极致体验</text>
+  <text x="600" y="340" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="300" font-size="32" fill="#ffffffcc">探索无限可能</text>
+  <!-- Feature boxes -->
+  <rect x="120" y="400" width="280" height="200" rx="16" fill="#ffffff20"/>
+  <text x="260" y="450" text-anchor="middle" font-family="Arial" font-weight="700" font-size="48" fill="url(#accent)">01</text>
+  <text x="260" y="500" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="600" font-size="18" fill="white">创新设计</text>
+  <text x="260" y="530" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-size="14" fill="#ffffff80">突破传统边界</text>
+
+  <rect x="460" y="400" width="280" height="200" rx="16" fill="#ffffff20"/>
+  <text x="600" y="450" text-anchor="middle" font-family="Arial" font-weight="700" font-size="48" fill="url(#accent)">02</text>
+  <text x="600" y="500" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="600" font-size="18" fill="white">卓越品质</text>
+  <text x="600" y="530" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-size="14" fill="#ffffff80">精工细作</text>
+
+  <rect x="800" y="400" width="280" height="200" rx="16" fill="#ffffff20"/>
+  <text x="940" y="450" text-anchor="middle" font-family="Arial" font-weight="700" font-size="48" fill="url(#accent)">03</text>
+  <text x="940" y="500" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="600" font-size="18" fill="white">尊享服务</text>
+  <text x="940" y="530" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-size="14" fill="#ffffff80">VIP专属体验</text>
+  <!-- CTA -->
+  <rect x="400" y="640" width="400" height="60" rx="30" fill="url(#gold)"/>
+  <text x="600" y="680" text-anchor="middle" font-family="Microsoft YaHei, SimHei, Arial" font-weight="700" font-size="22" fill="#333">立即探索 →</text>
+  <!-- Price tag -->
+  <circle cx="1050" cy="180" r="60" fill="url(#gold)"/>
+  <text x="1050" y="170" text-anchor="middle" font-family="Arial" font-weight="700" font-size="16" fill="#333">限时</text>
+  <text x="1050" y="200" text-anchor="middle" font-family="Arial" font-weight="900" font-size="24" fill="#333">¥999</text>
+</svg>
