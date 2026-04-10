@@ -1,26 +1,55 @@
-import { type FC, useCallback, useRef, useEffect } from 'react';
+import { type FC, useCallback, useRef, useEffect, useState } from 'react';
 import { Stage, Layer, Rect } from 'react-konva';
 import type Konva from 'konva';
 import { useEditorStore } from '../../store/editorStore';
 import { LayerRenderer } from './LayerRenderer';
 import { SelectionTransformer } from './SelectionTransformer';
-import { setExportStage } from '../../hooks/useExportImage';
+import { GridOverlay } from './GridOverlay';
+import { useShallow } from 'zustand/react/shallow';
 
 export const EditorStage: FC = () => {
-  const content = useEditorStore((s) => s.content);
-  const zoom = useEditorStore((s) => s.zoom);
-  const offsetX = useEditorStore((s) => s.offsetX);
-  const offsetY = useEditorStore((s) => s.offsetY);
-  const setViewport = useEditorStore((s) => s.setViewport);
-  const selectLayers = useEditorStore((s) => s.selectLayers);
-  const stageRef = useRef<Konva.Stage>(null);
+  const { content, zoom, offsetX, offsetY, setViewport, selectLayers, setStageRef, showGrid } = useEditorStore(
+    useShallow((s) => ({
+      content: s.content,
+      zoom: s.zoom,
+      offsetX: s.offsetX,
+      offsetY: s.offsetY,
+      setViewport: s.setViewport,
+      selectLayers: s.selectLayers,
+      setStageRef: s.setStageRef,
+      showGrid: s.showGrid,
+    }))
+  );
 
+  const stageRef = useRef<Konva.Stage>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+
+  // ResizeObserver for responsive canvas
   useEffect(() => {
-    setExportStage(stageRef.current);
-    return () => {
-      setExportStage(null);
-    };
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setContainerSize({ width: Math.floor(width), height: Math.floor(height) });
+        }
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
   }, []);
+
+  // Set stage ref into Store
+  useEffect(() => {
+    setStageRef(stageRef.current);
+    return () => {
+      setStageRef(null);
+    };
+  }, [setStageRef]);
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -60,15 +89,15 @@ export const EditorStage: FC = () => {
 
   if (!content) return null;
 
-  const containerWidth = 800;
-  const containerHeight = 600;
-
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div
+      ref={containerRef}
+      style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
       <Stage
         ref={stageRef as never}
-        width={containerWidth}
-        height={containerHeight}
+        width={containerSize.width}
+        height={containerSize.height}
         scaleX={zoom}
         scaleY={zoom}
         x={offsetX}
@@ -92,6 +121,10 @@ export const EditorStage: FC = () => {
             fill={content.canvas.background}
             listening={false}
           />
+          {/* Grid overlay */}
+          {showGrid && (
+            <GridOverlay width={content.canvas.width} height={content.canvas.height} />
+          )}
           {/* Layers */}
           {content.layers.map((layer) => (
             <LayerRenderer key={layer.id} layer={layer} />

@@ -2,6 +2,20 @@ import { create } from 'zustand';
 import type { EditorDocumentContent, EditorLayer, Canvas, SvgLayer, ImageLayer } from '../types';
 import { buildEditableTemplateFromImageLayer, getPrimaryTemplateTextLayerId } from '../data/imageTemplates';
 import { ungroupSvgLayer } from '../utils/svgParser';
+import {
+  findLayerById,
+  updateLayerInTree,
+  removeLayerFromTree,
+  replaceLayerInTree,
+  addLayerToTree,
+  toggleLayerInTree,
+  moveLayerUp,
+  moveLayerDown,
+  bringToFront,
+  sendToBack,
+} from '../utils/layerTreeOperations';
+import { pushHistory, canUndo as historyCanUndo, canRedo as historyCanRedo } from './history';
+import type Konva from 'konva';
 
 interface EditorState {
   documentId: number | null;
@@ -14,112 +28,58 @@ interface EditorState {
   zoom: number;
   offsetX: number;
   offsetY: number;
+  stageRef: Konva.Stage | null;
+  canUndo: boolean;
+  canRedo: boolean;
+  showGrid: boolean;
+  snapEnabled: boolean;
 
   setDocument: (payload: { documentId: number; title: string; currentVersion: number; content: EditorDocumentContent }) => void;
   selectLayers: (layerIds: string[]) => void;
+  selectAll: () => void;
   updateContent: (content: EditorDocumentContent) => void;
   updateCanvas: (canvas: Partial<Canvas>) => void;
   addLayer: (layer: EditorLayer, parentId?: string | null, index?: number) => void;
+  addLayersBatch: (layers: EditorLayer[]) => void;
   updateLayerPatch: (layerId: string, patch: Partial<EditorLayer>) => void;
+  updateLayerPatchDebounced: (layerId: string, patch: Partial<EditorLayer>) => void;
   removeLayer: (layerId: string) => void;
   moveLayer: (layerId: string, parentId: string | null, index: number) => void;
+  moveLayerUp: (layerId: string) => void;
+  moveLayerDown: (layerId: string) => void;
+  bringToFront: (layerId: string) => void;
+  sendToBack: (layerId: string) => void;
   toggleLayerVisible: (layerId: string) => void;
   toggleLayerLocked: (layerId: string) => void;
   ungroupLayer: (layerId: string) => void;
   convertImageLayerToTemplate: (layerId: string) => void;
+  nudgeLayers: (layerIds: string[], dx: number, dy: number) => void;
   setViewport: (zoom: number, offsetX: number, offsetY: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomToFit: (containerWidth: number, containerHeight: number) => void;
+  zoomTo100: () => void;
+  setStageRef: (stage: Konva.Stage | null) => void;
+  toggleGrid: () => void;
+  toggleSnap: () => void;
   markSaved: (nextVersion: number) => void;
   markDirty: () => void;
   setSaving: (saving: boolean) => void;
   reset: () => void;
 }
 
-function findLayerById(layers: EditorLayer[], id: string): EditorLayer | null {
-  for (const layer of layers) {
-    if (layer.id === id) return layer;
-    if (layer.type === 'group' && layer.children) {
-      const found = findLayerById(layer.children, id);
-      if (found) return found;
-    }
-  }
-  return null;
+// Debounce timer for patch history
+let patchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Helper to sync history reactivity
+function syncHistoryState(): Partial<EditorState> {
+  return {
+    canUndo: historyCanUndo(),
+    canRedo: historyCanRedo(),
+  };
 }
 
-function updateLayerInTree(layers: EditorLayer[], id: string, patch: Partial<EditorLayer>): EditorLayer[] {
-  return layers.map((layer) => {
-    if (layer.id === id) {
-      return { ...layer, ...patch } as EditorLayer;
-    }
-    if (layer.type === 'group' && layer.children) {
-      return { ...layer, children: updateLayerInTree(layer.children, id, patch) } as EditorLayer;
-    }
-    return layer;
-  });
-}
-
-function removeLayerFromTree(layers: EditorLayer[], id: string): EditorLayer[] {
-  return layers
-    .filter((layer) => layer.id !== id)
-    .map((layer) => {
-      if (layer.type === 'group' && layer.children) {
-        return { ...layer, children: removeLayerFromTree(layer.children, id) };
-      }
-      return layer;
-    });
-}
-
-function replaceLayerInTree(layers: EditorLayer[], id: string, replacements: EditorLayer[]): EditorLayer[] {
-  const targetIndex = layers.findIndex((layer) => layer.id === id);
-  if (targetIndex >= 0) {
-    return [
-      ...layers.slice(0, targetIndex),
-      ...replacements,
-      ...layers.slice(targetIndex + 1),
-    ];
-  }
-
-  return layers.map((layer) => {
-    if (layer.type === 'group' && layer.children) {
-      return { ...layer, children: replaceLayerInTree(layer.children, id, replacements) };
-    }
-    return layer;
-  });
-}
-
-function addLayerToTree(layers: EditorLayer[], layer: EditorLayer, parentId: string | null, index?: number): EditorLayer[] {
-  if (parentId === null || parentId === undefined) {
-    const newLayers = [...layers];
-    const insertIndex = index !== undefined ? Math.min(index, newLayers.length) : newLayers.length;
-    newLayers.splice(insertIndex, 0, layer);
-    return newLayers;
-  }
-  return layers.map((l) => {
-    if (l.id === parentId && l.type === 'group') {
-      const children = [...l.children];
-      const insertIndex = index !== undefined ? Math.min(index, children.length) : children.length;
-      children.splice(insertIndex, 0, layer);
-      return { ...l, children };
-    }
-    if (l.type === 'group' && l.children) {
-      return { ...l, children: addLayerToTree(l.children, layer, parentId, index) };
-    }
-    return l;
-  });
-}
-
-function toggleLayerInTree(layers: EditorLayer[], id: string, field: 'visible' | 'locked'): EditorLayer[] {
-  return layers.map((layer) => {
-    if (layer.id === id) {
-      return { ...layer, [field]: !layer[field] };
-    }
-    if (layer.type === 'group' && layer.children) {
-      return { ...layer, children: toggleLayerInTree(layer.children, id, field) };
-    }
-    return layer;
-  });
-}
-
-export const useEditorStore = create<EditorState>((set) => ({
+export const useEditorStore = create<EditorState>((set, get) => ({
   documentId: null,
   title: '',
   currentVersion: 0,
@@ -130,6 +90,11 @@ export const useEditorStore = create<EditorState>((set) => ({
   zoom: 1,
   offsetX: 0,
   offsetY: 0,
+  stageRef: null,
+  canUndo: false,
+  canRedo: false,
+  showGrid: false,
+  snapEnabled: true,
 
   setDocument: (payload) =>
     set({
@@ -139,18 +104,36 @@ export const useEditorStore = create<EditorState>((set) => ({
       content: payload.content,
       selectedLayerIds: [],
       isDirty: false,
+      canUndo: false,
+      canRedo: false,
     }),
 
   selectLayers: (layerIds) => set({ selectedLayerIds: layerIds }),
 
-  updateContent: (content) => set((state) => ({ content, isDirty: state.isDirty || true })),
+  selectAll: () => {
+    const { content } = get();
+    if (!content) return;
+    const allIds = content.layers.map((l) => l.id);
+    set({ selectedLayerIds: allIds });
+  },
+
+  updateContent: (content) => {
+    const prevContent = get().content;
+    if (prevContent) {
+      pushHistory({ content: { ...prevContent }, selectedLayerIds: get().selectedLayerIds });
+    }
+    set({ content, isDirty: true, ...syncHistoryState() });
+  },
 
   updateCanvas: (canvas) =>
     set((state) => {
       if (!state.content) return state;
+      const newContent = { ...state.content, canvas: { ...state.content.canvas, ...canvas } };
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, canvas: { ...state.content.canvas, ...canvas } },
+        content: newContent,
         isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
@@ -158,29 +141,74 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       if (!state.content) return state;
       const newLayers = addLayerToTree(state.content.layers, layer, parentId ?? null, index);
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       return {
         content: { ...state.content, layers: newLayers },
         selectedLayerIds: [layer.id],
         isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  addLayersBatch: (layers) =>
+    set((state) => {
+      if (!state.content) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      let newLayers = state.content.layers;
+      const newIds: string[] = [];
+      for (const layer of layers) {
+        newLayers = addLayerToTree(newLayers, layer, null);
+        newIds.push(layer.id);
+      }
+      return {
+        content: { ...state.content, layers: newLayers },
+        selectedLayerIds: newIds,
+        isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
   updateLayerPatch: (layerId, patch) =>
     set((state) => {
       if (!state.content) return state;
+      const newContent = { ...state.content, layers: updateLayerInTree(state.content.layers, layerId, patch) };
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      return {
+        content: newContent,
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  updateLayerPatchDebounced: (layerId, patch) => {
+    // Update state immediately for responsive UI
+    set((state) => {
+      if (!state.content) return state;
       return {
         content: { ...state.content, layers: updateLayerInTree(state.content.layers, layerId, patch) },
         isDirty: true,
       };
-    }),
+    });
+    // Debounce the history push
+    if (patchDebounceTimer) clearTimeout(patchDebounceTimer);
+    patchDebounceTimer = setTimeout(() => {
+      const currentContent = get().content;
+      if (currentContent) {
+        pushHistory({ content: { ...currentContent }, selectedLayerIds: get().selectedLayerIds });
+        set(syncHistoryState());
+      }
+    }, 300);
+  },
 
   removeLayer: (layerId) =>
     set((state) => {
       if (!state.content) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       return {
         content: { ...state.content, layers: removeLayerFromTree(state.content.layers, layerId) },
         selectedLayerIds: state.selectedLayerIds.filter((id) => id !== layerId),
         isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
@@ -191,27 +219,81 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (!layer) return state;
       let newLayers = removeLayerFromTree(state.content.layers, layerId);
       newLayers = addLayerToTree(newLayers, layer, parentId, index);
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       return {
         content: { ...state.content, layers: newLayers },
         isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  moveLayerUp: (layerId) =>
+    set((state) => {
+      if (!state.content) return state;
+      const newLayers = moveLayerUp(state.content.layers, layerId);
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  moveLayerDown: (layerId) =>
+    set((state) => {
+      if (!state.content) return state;
+      const newLayers = moveLayerDown(state.content.layers, layerId);
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  bringToFront: (layerId) =>
+    set((state) => {
+      if (!state.content) return state;
+      const newLayers = bringToFront(state.content.layers, layerId);
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  sendToBack: (layerId) =>
+    set((state) => {
+      if (!state.content) return state;
+      const newLayers = sendToBack(state.content.layers, layerId);
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
   toggleLayerVisible: (layerId) =>
     set((state) => {
       if (!state.content) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       return {
         content: { ...state.content, layers: toggleLayerInTree(state.content.layers, layerId, 'visible') },
         isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
   toggleLayerLocked: (layerId) =>
     set((state) => {
       if (!state.content) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       return {
         content: { ...state.content, layers: toggleLayerInTree(state.content.layers, layerId, 'locked') },
         isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
@@ -228,10 +310,13 @@ export const useEditorStore = create<EditorState>((set) => ({
         ? ungrouped.children.map(c => c.id)
         : [ungrouped.id];
 
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
       return {
         content: { ...state.content, layers: replaceLayerInTree(state.content.layers, layerId, [ungrouped]) },
         selectedLayerIds: newSelectedIds,
         isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
@@ -244,14 +329,72 @@ export const useEditorStore = create<EditorState>((set) => ({
       const template = buildEditableTemplateFromImageLayer(layer as ImageLayer);
       if (!template) return state;
 
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
       return {
         content: { ...state.content, layers: replaceLayerInTree(state.content.layers, layerId, [template]) },
         selectedLayerIds: [getPrimaryTemplateTextLayerId(template)],
         isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  nudgeLayers: (layerIds, dx, dy) =>
+    set((state) => {
+      if (!state.content) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      let newLayers = state.content.layers;
+      for (const id of layerIds) {
+        const layer = findLayerById(newLayers, id);
+        if (layer && !layer.locked) {
+          newLayers = updateLayerInTree(newLayers, id, {
+            x: (layer.x ?? 0) + dx,
+            y: (layer.y ?? 0) + dy,
+          });
+        }
+      }
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
       };
     }),
 
   setViewport: (zoom, offsetX, offsetY) => set({ zoom, offsetX, offsetY }),
+
+  zoomIn: () => {
+    const { zoom, offsetX, offsetY } = get();
+    const newZoom = Math.min(5, zoom * 1.2);
+    set({ zoom: newZoom });
+  },
+
+  zoomOut: () => {
+    const { zoom } = get();
+    const newZoom = Math.max(0.1, zoom / 1.2);
+    set({ zoom: newZoom });
+  },
+
+  zoomToFit: (containerWidth, containerHeight) => {
+    const { content } = get();
+    if (!content) return;
+    const padding = 60;
+    const scaleX = (containerWidth - padding * 2) / content.canvas.width;
+    const scaleY = (containerHeight - padding * 2) / content.canvas.height;
+    const newZoom = Math.min(scaleX, scaleY, 2);
+    const newOffsetX = (containerWidth - content.canvas.width * newZoom) / 2;
+    const newOffsetY = (containerHeight - content.canvas.height * newZoom) / 2;
+    set({ zoom: newZoom, offsetX: newOffsetX, offsetY: newOffsetY });
+  },
+
+  zoomTo100: () => {
+    set({ zoom: 1, offsetX: 0, offsetY: 0 });
+  },
+
+  setStageRef: (stage) => set({ stageRef: stage }),
+
+  toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
+
+  toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
 
   markSaved: (nextVersion) => set({ currentVersion: nextVersion, isDirty: false }),
 
@@ -271,7 +414,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       zoom: 1,
       offsetX: 0,
       offsetY: 0,
+      stageRef: null,
+      canUndo: false,
+      canRedo: false,
+      showGrid: false,
+      snapEnabled: true,
     }),
 }));
 
+// Export findLayerById for other modules
 export { findLayerById };

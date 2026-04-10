@@ -4,6 +4,7 @@ import { Spin, message } from 'antd';
 import { useEditorStore } from '@/features/editor/store/editorStore';
 import { getDocument } from '@/features/editor/api/document';
 import { EditorLayout } from '@/features/editor/components/layout/EditorLayout';
+import { EditorErrorBoundary } from '@/features/editor/components/layout/EditorErrorBoundary';
 import { clearHistory, pushHistory } from '@/features/editor/store/history';
 import { normalizePosterLayers } from '@/features/editor/data/imageTemplates';
 
@@ -64,5 +65,9 @@ export const EditorPage: FC = () => {
     );
   }
 
-  return <EditorLayout />;
+  return (
+    <EditorErrorBoundary>
+      <EditorLayout />
+    </EditorErrorBoundary>
+  );
 };

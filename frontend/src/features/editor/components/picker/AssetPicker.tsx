@@ -4,7 +4,6 @@ import { AppstoreOutlined, UploadOutlined, ReloadOutlined } from '@ant-design/ic
 import { listAssets, uploadAsset } from '../../api/asset';
 import { useEditorStore } from '../../store/editorStore';
 import { generateId } from '../../utils/layerTree';
-import { pushHistory } from '../../store/history';
 import { hasEditableTemplateForImage, buildEditableTemplateFromImageLayer, getPrimaryTemplateTextLayerId } from '../../data/imageTemplates';
 import type { AssetResponse, EditorLayer, ImageLayer } from '../../types';
 import { AssetCard } from './AssetCard';
@@ -84,7 +83,6 @@ export const AssetPicker: FC<AssetPickerProps> = ({ documentId }) => {
 
       addLayer(layer);
       selectLayers(selectedIds);
-      pushHistory({ content: { ...content }, selectedLayerIds: selectedIds });
       setOpen(false);
     },
     [content, addLayer, selectLayers]

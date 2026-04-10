@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type ChangeEvent, type FC } from 'react';
-import { Button, Space, Tooltip, Popover, Card, Typography, Tag, message } from 'antd';
+import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, message } from 'antd';
 import {
   PlusSquareOutlined,
   FontSizeOutlined,
@@ -11,6 +11,11 @@ import {
   StarOutlined,
   DownloadOutlined,
   AppstoreOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
+  ExpandOutlined,
+  BorderOutlined,
+  AimOutlined,
 } from '@ant-design/icons';
 import { useEditorStore } from '../../store/editorStore';
 import { generateId } from '../../utils/layerTree';
@@ -20,16 +25,23 @@ import { LayerTreePanel } from '../panel/LayerTreePanel';
 import { PropertyPanel } from '../panel/PropertyPanel';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useExportImage } from '../../hooks/useExportImage';
-import { undo, redo, canUndo, canRedo, pushHistory } from '../../store/history';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
+import { undo, redo } from '../../store/history';
 import { presetShapes } from '../../data/presetShapes';
 import { createLayerFromLocalImage } from '../../utils/localImageImport';
 import { AssetPicker } from '../picker/AssetPicker';
+import { useShallow } from 'zustand/react/shallow';
+import DOMPurify from 'dompurify';
 
 const { Text } = Typography;
 
 const SvgShapePicker: FC = () => {
-  const content = useEditorStore((s) => s.content);
-  const addLayer = useEditorStore((s) => s.addLayer);
+  const { content, addLayer } = useEditorStore(
+    useShallow((s) => ({
+      content: s.content,
+      addLayer: s.addLayer,
+    }))
+  );
   const [open, setOpen] = useState(false);
 
   const handleAddSvg = useCallback(
@@ -48,7 +60,6 @@ const SvgShapePicker: FC = () => {
         locked: false,
       };
       addLayer(layer);
-      pushHistory({ content: { ...content }, selectedLayerIds: [layer.id] });
       setOpen(false);
     },
     [content, addLayer]
@@ -76,11 +87,11 @@ const SvgShapePicker: FC = () => {
                       hoverable
                       size="small"
                       style={{ cursor: 'pointer', padding: 4 }}
-                      bodyStyle={{ padding: 4 }}
+                      styles={{ body: { padding: 4 } }}
                       onClick={() => handleAddSvg(shape)}
                     >
                       <div
-                        dangerouslySetInnerHTML={{ __html: shape.svgData }}
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shape.svgData) }}
                         style={{
                           width: '100%',
                           height: 70,
@@ -101,7 +112,7 @@ const SvgShapePicker: FC = () => {
         </div>
       }
     >
-      <Tooltip title="选择服务器 SVG">
+      <Tooltip title="SVG Shapes">
         <Button icon={<StarOutlined />} size="small" />
       </Tooltip>
     </Popover>
@@ -109,9 +120,13 @@ const SvgShapePicker: FC = () => {
 };
 
 const LocalImagePicker: FC = () => {
-  const content = useEditorStore((s) => s.content);
-  const addLayer = useEditorStore((s) => s.addLayer);
-  const selectLayers = useEditorStore((s) => s.selectLayers);
+  const { content, addLayer, selectLayers } = useEditorStore(
+    useShallow((s) => ({
+      content: s.content,
+      addLayer: s.addLayer,
+      selectLayers: s.selectLayers,
+    }))
+  );
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = useCallback(
@@ -124,10 +139,9 @@ const LocalImagePicker: FC = () => {
         const parsed = await createLayerFromLocalImage(file, content.canvas);
         addLayer(parsed.layer);
         selectLayers(parsed.selectedLayerIds);
-        pushHistory({ content: { ...content }, selectedLayerIds: parsed.selectedLayerIds });
       } catch (error) {
         console.error('Failed to parse local image:', error);
-        message.error(error instanceof Error ? error.message : '本地图片解析失败');
+        message.error(error instanceof Error ? error.message : 'Failed to parse local image');
       } finally {
         event.target.value = '';
       }
@@ -144,7 +158,7 @@ const LocalImagePicker: FC = () => {
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
-      <Tooltip title="打开本地图片">
+      <Tooltip title="Import Image">
         <Button icon={<PictureOutlined />} size="small" onClick={() => inputRef.current?.click()} />
       </Tooltip>
     </>
@@ -152,8 +166,30 @@ const LocalImagePicker: FC = () => {
 };
 
 export const EditorLayout: FC = () => {
-  const content = useEditorStore((s) => s.content);
-  const addLayer = useEditorStore((s) => s.addLayer);
+  useKeyboardShortcuts();
+
+  const {
+    content, addLayer, saving, canUndo, canRedo, zoom,
+    zoomIn, zoomOut, zoomToFit, zoomTo100, showGrid, snapEnabled, toggleGrid, toggleSnap,
+  } = useEditorStore(
+    useShallow((s) => ({
+      content: s.content,
+      addLayer: s.addLayer,
+      saving: s.saving,
+      canUndo: s.canUndo,
+      canRedo: s.canRedo,
+      zoom: s.zoom,
+      zoomIn: s.zoomIn,
+      zoomOut: s.zoomOut,
+      zoomToFit: s.zoomToFit,
+      zoomTo100: s.zoomTo100,
+      showGrid: s.showGrid,
+      snapEnabled: s.snapEnabled,
+      toggleGrid: s.toggleGrid,
+      toggleSnap: s.toggleSnap,
+    }))
+  );
+
   const { save } = useAutoSave();
   const { downloadImage } = useExportImage();
   const [exporting, setExporting] = useState(false);
@@ -173,7 +209,6 @@ export const EditorLayout: FC = () => {
       locked: false,
     };
     addLayer(layer);
-    pushHistory({ content: { ...content }, selectedLayerIds: [layer.id] });
   }, [content, addLayer]);
 
   const handleAddText = useCallback(() => {
@@ -192,7 +227,6 @@ export const EditorLayout: FC = () => {
       locked: false,
     };
     addLayer(layer);
-    pushHistory({ content: { ...content }, selectedLayerIds: [layer.id] });
   }, [content, addLayer]);
 
   const handleAddGroup = useCallback(() => {
@@ -210,7 +244,6 @@ export const EditorLayout: FC = () => {
       children: [],
     };
     addLayer(layer);
-    pushHistory({ content: { ...content }, selectedLayerIds: [layer.id] });
   }, [content, addLayer]);
 
   const handleUndo = useCallback(() => {
@@ -238,22 +271,23 @@ export const EditorLayout: FC = () => {
     try {
       const success = await downloadImage();
       if (success) {
-        message.success('导出成功');
+        message.success('Export successful');
       } else {
-        message.error('导出失败');
+        message.error('Export failed');
       }
     } catch (e) {
       console.error('Export failed:', e);
-      message.error('导出失败');
+      message.error('Export failed');
     } finally {
       setExporting(false);
     }
   }, [downloadImage]);
 
-  const saving = useEditorStore((s) => s.saving);
+  const zoomPercent = Math.round(zoom * 100);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      {/* Toolbar */}
       <div
         style={{
           height: 48,
@@ -266,7 +300,8 @@ export const EditorLayout: FC = () => {
           flexShrink: 0,
         }}
       >
-        <Space>
+        <Space size={4}>
+          {/* Add layer tools */}
           <Tooltip title="Add Rectangle">
             <Button icon={<PlusSquareOutlined />} size="small" onClick={handleAddRect} />
           </Tooltip>
@@ -279,15 +314,69 @@ export const EditorLayout: FC = () => {
           <Tooltip title="Add Group">
             <Button icon={<FolderOutlined />} size="small" onClick={handleAddGroup} />
           </Tooltip>
-          <div style={{ width: 1, height: 24, background: '#e8e8e8', margin: '0 4px' }} />
-          <Tooltip title="Undo">
-            <Button icon={<UndoOutlined />} size="small" onClick={handleUndo} disabled={!canUndo()} />
+
+          <Divider type="vertical" style={{ height: 24, margin: '0 4px' }} />
+
+          {/* Undo/Redo */}
+          <Tooltip title="Undo (Ctrl+Z)">
+            <Button icon={<UndoOutlined />} size="small" onClick={handleUndo} disabled={!canUndo} />
           </Tooltip>
-          <Tooltip title="Redo">
-            <Button icon={<RedoOutlined />} size="small" onClick={handleRedo} disabled={!canRedo()} />
+          <Tooltip title="Redo (Ctrl+Shift+Z)">
+            <Button icon={<RedoOutlined />} size="small" onClick={handleRedo} disabled={!canRedo} />
           </Tooltip>
-          <div style={{ width: 1, height: 24, background: '#e8e8e8', margin: '0 4px' }} />
-          <Tooltip title="Save">
+
+          <Divider type="vertical" style={{ height: 24, margin: '0 4px' }} />
+
+          {/* Zoom controls */}
+          <Tooltip title="Zoom Out (Ctrl+-)">
+            <Button icon={<ZoomOutOutlined />} size="small" onClick={zoomOut} />
+          </Tooltip>
+          <Tooltip title="Reset to 100%">
+            <Button
+              size="small"
+              style={{ minWidth: 52, fontSize: 12, fontWeight: 500 }}
+              onClick={zoomTo100}
+            >
+              {zoomPercent}%
+            </Button>
+          </Tooltip>
+          <Tooltip title="Zoom In (Ctrl+=)">
+            <Button icon={<ZoomInOutlined />} size="small" onClick={zoomIn} />
+          </Tooltip>
+          <Tooltip title="Fit to Screen (Ctrl+1)">
+            <Button icon={<ExpandOutlined />} size="small" onClick={() => {
+              const container = document.querySelector('[data-canvas-container]');
+              if (container) {
+                const rect = container.getBoundingClientRect();
+                zoomToFit(rect.width, rect.height);
+              }
+            }} />
+          </Tooltip>
+
+          <Divider type="vertical" style={{ height: 24, margin: '0 4px' }} />
+
+          {/* Toggle tools */}
+          <Tooltip title={showGrid ? 'Hide Grid' : 'Show Grid'}>
+            <Button
+              icon={<BorderOutlined />}
+              size="small"
+              type={showGrid ? 'primary' : 'default'}
+              onClick={toggleGrid}
+            />
+          </Tooltip>
+          <Tooltip title={snapEnabled ? 'Disable Snap' : 'Enable Snap'}>
+            <Button
+              icon={<AimOutlined />}
+              size="small"
+              type={snapEnabled ? 'primary' : 'default'}
+              onClick={toggleSnap}
+            />
+          </Tooltip>
+
+          <Divider type="vertical" style={{ height: 24, margin: '0 4px' }} />
+
+          {/* Save/Export */}
+          <Tooltip title="Save (Ctrl+S)">
             <Button icon={<SaveOutlined />} size="small" onClick={handleSave} loading={saving} />
           </Tooltip>
           <Tooltip title="Export as PNG">
@@ -295,11 +384,13 @@ export const EditorLayout: FC = () => {
           </Tooltip>
         </Space>
       </div>
+
+      {/* Main content */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div style={{ width: 240, borderRight: '1px solid #e8e8e8', overflowY: 'auto', flexShrink: 0 }}>
           <LayerTreePanel />
         </div>
-        <div style={{ flex: 1, overflow: 'hidden', background: '#f0f0f0' }}>
+        <div data-canvas-container style={{ flex: 1, overflow: 'hidden', background: '#f0f0f0' }}>
           <EditorStage />
         </div>
         <div style={{ width: 280, borderLeft: '1px solid #e8e8e8', overflowY: 'auto', flexShrink: 0 }}>

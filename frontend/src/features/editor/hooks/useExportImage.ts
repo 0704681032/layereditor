@@ -1,33 +1,34 @@
 import { useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
-
-// Will be set by EditorStage
-let stageInstance: any = null;
-
-export function setExportStage(stage: any) {
-  stageInstance = stage;
-}
+import { useShallow } from 'zustand/react/shallow';
+import type Konva from 'konva';
 
 export function useExportImage() {
-  const content = useEditorStore((s) => s.content);
-  const title = useEditorStore((s) => s.title);
+  const { stageRef, content, title } = useEditorStore(
+    useShallow((s) => ({
+      stageRef: s.stageRef as Konva.Stage | null,
+      content: s.content,
+      title: s.title,
+    }))
+  );
 
   const downloadImage = useCallback(
     async (filename?: string, format: 'png' | 'jpeg' = 'png', quality = 1) => {
-      if (!stageInstance || !content) {
+      if (!stageRef || !content) {
         console.error('No stage or content available');
         return false;
       }
 
-      const stage = stageInstance;
-      const layer = stage.children?.[0];
+      const stage = stageRef;
+      const layer = stage.children[0] as Konva.Layer;
       if (!layer) {
         console.error('No layer found');
         return false;
       }
 
       // Find and hide the transformer
-      const transformer = layer.children?.find((child: any) => child.name() === 'transformer');
+      const children = layer.children as Konva.Node[];
+      const transformer = children?.find((child) => child.name() === 'transformer') as Konva.Transformer | undefined;
       const wasVisible = transformer?.visible();
       if (transformer) {
         transformer.visible(false);
@@ -60,12 +61,21 @@ export function useExportImage() {
       try {
         // Export with high pixel ratio for crisp text
         const blob = await new Promise<Blob | null>((resolve) => {
-          stage.toBlob({
+          stage.toDataURL({
             mimeType: `image/${format}`,
             quality,
             pixelRatio,
-            callback: (blob: Blob | null) => resolve(blob),
           });
+          // Konva's toDataURL returns string, need to convert to blob
+          const dataUrl = stage.toDataURL({
+            mimeType: `image/${format}`,
+            quality,
+            pixelRatio,
+          });
+          fetch(dataUrl)
+            .then((res) => res.blob())
+            .then(resolve)
+            .catch(() => resolve(null));
         });
 
         if (!blob) {
@@ -98,7 +108,7 @@ export function useExportImage() {
         layer.batchDraw();
       }
     },
-    [content, title]
+    [stageRef, content, title]
   );
 
   return { downloadImage };
