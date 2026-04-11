@@ -44,4 +44,9 @@
         </if>
     </select>
 
+    <update id="updateDocumentId">
+        UPDATE editor_asset SET document_id = #{documentId}
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
 </mapper>

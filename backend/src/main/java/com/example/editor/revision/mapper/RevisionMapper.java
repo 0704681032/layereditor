@@ -14,4 +14,6 @@ public interface RevisionMapper {
     List<EditorDocumentRevision> selectByDocumentId(@Param("documentId") Long documentId);
 
     EditorDocumentRevision selectById(@Param("id") Long id, @Param("documentId") Long documentId);
+
+    EditorDocumentRevision selectByDocumentIdAndVersion(@Param("documentId") Long documentId, @Param("versionNo") int versionNo);
 }

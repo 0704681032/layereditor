@@ -8,6 +8,7 @@ import com.example.editor.document.dto.*;
 import com.example.editor.document.entity.EditorDocument;
 import com.example.editor.common.util.ContentValidator;
 import com.example.editor.common.util.SvgSanitizer;
+import com.example.editor.asset.mapper.AssetMapper;
 import com.example.editor.document.mapper.DocumentMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +33,7 @@ import java.util.regex.Pattern;
 public class DocumentService {
 
     private final DocumentMapper documentMapper;
+    private final AssetMapper assetMapper;
     private final ObjectMapper objectMapper;
     private final AssetService assetService;
 
@@ -113,6 +115,10 @@ public class DocumentService {
         doc.setCurrentVersion(1);
         doc.setContent(content.toString());
         documentMapper.insert(doc);
+
+        // Link asset to the newly created document
+        assetMapper.updateDocumentId(asset.id(), doc.getId());
+
         return getDetail(doc.getId());
     }
 
@@ -125,8 +131,31 @@ public class DocumentService {
         return documentMapper.selectPageByOwner(DEFAULT_USER_ID).stream()
                 .map(d -> new DocumentListItemResponse(
                         d.getId(), d.getTitle(), d.getStatus(),
-                        d.getCurrentVersion(), d.getCreatedAt(), d.getUpdatedAt()))
+                        d.getCurrentVersion(), d.getCreatedAt(), d.getUpdatedAt(),
+                        parseContentSummary(d.getContent())))
                 .toList();
+    }
+
+    private DocumentListItemResponse.ContentSummary parseContentSummary(String contentJson) {
+        if (contentJson == null || contentJson.isBlank()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(contentJson);
+            JsonNode canvas = root.get("canvas");
+            DocumentListItemResponse.Canvas canvasSummary = null;
+            if (canvas != null) {
+                canvasSummary = new DocumentListItemResponse.Canvas(
+                    canvas.has("width") ? canvas.get("width").asInt() : null,
+                    canvas.has("height") ? canvas.get("height").asInt() : null,
+                    canvas.has("background") ? canvas.get("background").asText() : null
+                );
+            }
+            JsonNode layers = root.get("layers");
+            int layerCount = layers != null && layers.isArray() ? layers.size() : 0;
+            String thumbnail = root.has("thumbnail") ? root.get("thumbnail").asText() : null;
+            return new DocumentListItemResponse.ContentSummary(canvasSummary, layerCount, thumbnail);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Transactional
@@ -166,6 +195,17 @@ public class DocumentService {
         int deleted = documentMapper.softDelete(id, DEFAULT_USER_ID);
         if (deleted == 0) {
             throw new NotFoundException("document not found");
+        }
+    }
+
+    @Transactional
+    public void restoreContent(Long id, String content) {
+        EditorDocument doc = findOrThrow(id);
+        int updated = documentMapper.updateDocument(
+                id, DEFAULT_USER_ID, doc.getTitle(),
+                doc.getSchemaVersion(), content, doc.getCurrentVersion());
+        if (updated == 0) {
+            throw new ConflictException("document version conflict during restore");
         }
     }
 

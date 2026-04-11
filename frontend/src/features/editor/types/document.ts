@@ -14,6 +14,7 @@ export interface EditorDocumentContent {
   selection?: string[];
   guides?: unknown[];
   meta?: Record<string, unknown>;
+  thumbnail?: string;
 }
 
 export interface EditorDocumentDetail {
@@ -33,6 +34,11 @@ export interface DocumentListItem {
   currentVersion: number;
   createdAt: string;
   updatedAt: string;
+  content?: {
+    canvas?: { width: number; height: number; background: string };
+    layerCount?: number;
+    thumbnail?: string;
+  };
 }
 
 export interface DocumentUpdateResponse {

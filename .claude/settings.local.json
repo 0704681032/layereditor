@@ -74,7 +74,13 @@
       "Bash(pkill -f \"EditorApplication\")",
       "mcp__chrome-devtools__close_page",
       "Bash(git add:*)",
-      "Bash(git commit -m 'Initial commit: Layer Editor with React + Spring Boot:*)"
+      "Bash(git commit -m 'Initial commit: Layer Editor with React + Spring Boot:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(export JAVA_HOME=\"D:/Program Files \\(x86\\)/Java/jdk-21\")",
+      "Bash('D:/Program Files \\(x86\\)/Java/jdk-21/bin/java' -version)",
+      "Bash(npm install:*)",
+      "mcp__chrome-devtools__fill_form",
+      "Bash(npx tsc:*)"
     ]
   }
 }

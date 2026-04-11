@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { EditorDocumentContent, EditorLayer, Canvas, SvgLayer, ImageLayer, EllipseLayer, LineLayer, StarLayer, PolygonLayer } from '../types';
+import type { EditorDocumentContent, EditorLayer, Canvas, SvgLayer, ImageLayer, EllipseLayer, LineLayer, StarLayer, PolygonLayer, RectLayer } from '../types';
 import { buildEditableTemplateFromImageLayer, getPrimaryTemplateTextLayerId } from '../data/imageTemplates';
 import { ungroupSvgLayer } from '../utils/svgParser';
+import { generateId } from '../utils/layerTree';
 import {
   findLayerById,
   updateLayerInTree,
@@ -16,6 +17,9 @@ import {
 } from '../utils/layerTreeOperations';
 import { pushHistory, canUndo as historyCanUndo, canRedo as historyCanRedo } from './history';
 import type Konva from 'konva';
+
+// Draw mode types
+export type DrawMode = 'none' | 'rect' | 'ellipse' | 'line';
 
 interface EditorState {
   documentId: number | null;
@@ -33,7 +37,13 @@ interface EditorState {
   canRedo: boolean;
   showGrid: boolean;
   snapEnabled: boolean;
+  snapThreshold: number; // User-configurable snap sensitivity (1-20)
   theme: 'light' | 'dark';
+  guideLines: import('../components/canvas/SmartGuides').GuideLine[];
+  drawMode: DrawMode;
+  drawPreview: { x: number; y: number; width: number; height: number } | null;
+  clipboard: EditorLayer[]; // Clipboard content for copy/paste
+  hasClipboardContent: boolean; // Whether clipboard has content
 
   setDocument: (payload: { documentId: number; title: string; currentVersion: number; content: EditorDocumentContent }) => void;
   selectLayers: (layerIds: string[]) => void;
@@ -60,6 +70,9 @@ interface EditorState {
   ungroupSelectedLayers: () => void;
   alignLayers: (alignment: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom') => void;
   distributeLayers: (direction: 'horizontal' | 'vertical') => void;
+  copySelectedLayers: () => void;
+  cutSelectedLayers: () => void;
+  pasteLayers: (position?: { x: number; y: number }) => void;
   setViewport: (zoom: number, offsetX: number, offsetY: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -69,6 +82,11 @@ interface EditorState {
   toggleGrid: () => void;
   toggleSnap: () => void;
   toggleTheme: () => void;
+  setSnapThreshold: (threshold: number) => void;
+  setGuideLines: (guides: import('../components/canvas/SmartGuides').GuideLine[]) => void;
+  setDrawMode: (mode: DrawMode) => void;
+  setDrawPreview: (preview: { x: number; y: number; width: number; height: number } | null) => void;
+  finishDrawing: (layer: EditorLayer) => void;
   markSaved: (nextVersion: number) => void;
   markDirty: () => void;
   setSaving: (saving: boolean) => void;
@@ -102,7 +120,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canRedo: false,
   showGrid: false,
   snapEnabled: true,
+  snapThreshold: (typeof window !== 'undefined' && parseInt(localStorage.getItem('editor-snap-threshold') || '5')) || 5,
   theme: (typeof window !== 'undefined' && localStorage.getItem('editor-theme') as 'light' | 'dark') || 'light',
+  guideLines: [],
+  drawMode: 'none',
+  drawPreview: null,
+  clipboard: [],
+  hasClipboardContent: false,
 
   setDocument: (payload) =>
     set({
@@ -588,6 +612,84 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
+  copySelectedLayers: () =>
+    set((state) => {
+      if (!state.content || state.selectedLayerIds.length === 0) return state;
+      const layersToCopy = state.selectedLayerIds
+        .map((id) => findLayerById(state.content!.layers, id))
+        .filter(Boolean) as EditorLayer[];
+      return {
+        clipboard: layersToCopy,
+        hasClipboardContent: layersToCopy.length > 0,
+      };
+    }),
+
+  cutSelectedLayers: () =>
+    set((state) => {
+      if (!state.content || state.selectedLayerIds.length === 0) return state;
+      const layersToCopy = state.selectedLayerIds
+        .map((id) => findLayerById(state.content.layers, id))
+        .filter(Boolean) as EditorLayer[];
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      let newLayers = state.content.layers;
+      for (const id of state.selectedLayerIds) {
+        newLayers = removeLayerFromTree(newLayers, id);
+      }
+      return {
+        content: { ...state.content, layers: newLayers },
+        clipboard: layersToCopy,
+        hasClipboardContent: layersToCopy.length > 0,
+        selectedLayerIds: [],
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  pasteLayers: (position) =>
+    set((state) => {
+      if (!state.content || state.clipboard.length === 0) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
+      // Calculate offset position
+      let offsetX = 20;
+      let offsetY = 20;
+
+      if (position) {
+        const refLayer = state.clipboard[0];
+        offsetX = position.x - refLayer.x;
+        offsetY = position.y - refLayer.y;
+      }
+
+      // Create new layers with new IDs
+      const newLayers = state.clipboard.map((layer) => ({
+        ...layer,
+        id: generateId(),
+        name: `${layer.name} (copy)`,
+        x: layer.x + offsetX,
+        y: layer.y + offsetY,
+        // If it's a group, also regenerate child IDs
+        ...(layer.type === 'group' && layer.children ? {
+          children: layer.children.map(child => ({
+            ...child,
+            id: generateId(),
+            name: child.name,
+            x: child.x + offsetX,
+            y: child.y + offsetY,
+          })),
+        } : {}),
+      }));
+
+      const allLayers = [...state.content.layers, ...newLayers];
+      const newSelectedIds = newLayers.map(l => l.id);
+
+      return {
+        content: { ...state.content, layers: allLayers },
+        selectedLayerIds: newSelectedIds,
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
   setViewport: (zoom, offsetX, offsetY) => set({ zoom, offsetX, offsetY }),
 
   zoomIn: () => {
@@ -630,6 +732,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     return { theme: next };
   }),
 
+  setSnapThreshold: (threshold) => {
+    const clamped = Math.max(1, Math.min(20, threshold));
+    localStorage.setItem('editor-snap-threshold', String(clamped));
+    set({ snapThreshold: clamped });
+  },
+
+  setGuideLines: (guides) => set({ guideLines: guides }),
+
+  setDrawMode: (mode) => set({ drawMode: mode, drawPreview: null }),
+
+  setDrawPreview: (preview) => set({ drawPreview: preview }),
+
+  finishDrawing: (layer) => {
+    const { content } = get();
+    if (!content) return;
+    pushHistory({ content: { ...content }, selectedLayerIds: get().selectedLayerIds });
+    const newLayers = [...content.layers, layer];
+    set({
+      content: { ...content, layers: newLayers },
+      selectedLayerIds: [layer.id],
+      drawMode: 'none',
+      drawPreview: null,
+      isDirty: true,
+      ...syncHistoryState(),
+    });
+  },
+
   markSaved: (nextVersion) => set({ currentVersion: nextVersion, isDirty: false }),
 
   markDirty: () => set({ isDirty: true }),
@@ -653,6 +782,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       canRedo: false,
       showGrid: false,
       snapEnabled: true,
+      // Keep snapThreshold as user preference, don't reset
+      guideLines: [],
+      drawMode: 'none',
+      drawPreview: null,
+      // Keep clipboard content for cross-document paste
     }),
 }));
 

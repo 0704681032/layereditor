@@ -36,4 +36,11 @@ public class RevisionController {
             @PathVariable Long revisionId) {
         return ApiResponse.ok(revisionService.getRevisionDetail(documentId, revisionId));
     }
+
+    @PostMapping("/{versionNo}/restore")
+    public ApiResponse<RevisionResponse> restoreRevision(
+            @PathVariable Long documentId,
+            @PathVariable int versionNo) {
+        return ApiResponse.ok(revisionService.restoreRevision(documentId, versionNo));
+    }
 }

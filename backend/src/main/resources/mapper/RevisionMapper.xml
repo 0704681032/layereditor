@@ -21,4 +21,10 @@
         WHERE id = #{id} AND document_id = #{documentId}
     </select>
 
+    <select id="selectByDocumentIdAndVersion" resultType="com.example.editor.revision.entity.EditorDocumentRevision">
+        SELECT id, document_id, version_no, snapshot::text as snapshot, message, created_by, created_at
+        FROM editor_document_revision
+        WHERE document_id = #{documentId} AND version_no = #{versionNo}
+    </select>
+
 </mapper>

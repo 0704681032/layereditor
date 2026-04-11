@@ -1,4 +1,4 @@
-import { type FC } from 'react';
+import React, { type FC } from 'react';
 import { Line } from 'react-konva';
 
 interface GridOverlayProps {
@@ -8,7 +8,7 @@ interface GridOverlayProps {
 }
 
 export const GridOverlay: FC<GridOverlayProps> = ({ width, height, gridSize = 10 }) => {
-  const lines: JSX.Element[] = [];
+  const lines: React.ReactElement[] = [];
 
   // Vertical lines
   for (let x = 0; x <= width; x += gridSize) {

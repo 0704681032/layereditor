@@ -2,6 +2,24 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { updateDocument } from '../api/document';
 
+// Generate a small thumbnail directly from the canvas DOM element
+function generateThumbnail(): string | undefined {
+  try {
+    const canvas = document.querySelector('.konvajs-content canvas') as HTMLCanvasElement | null;
+    if (!canvas) return undefined;
+    const size = 200;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const ctx = c.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, size, size);
+    return c.toDataURL('image/jpeg', 0.6);
+  } catch {
+    return undefined;
+  }
+}
+
 export function useAutoSave(delayMs = 3000) {
   const isDirty = useEditorStore((s) => s.isDirty);
   const saving = useEditorStore((s) => s.saving);
@@ -17,11 +35,12 @@ export function useAutoSave(delayMs = 3000) {
     if (!documentId || !content || !isDirty || saving) return;
     setSaving(true);
     try {
+      const thumbnail = generateThumbnail();
       const result = await updateDocument(documentId, {
         title,
         schemaVersion: content.schemaVersion,
         currentVersion,
-        content,
+        content: { ...content, thumbnail },
       });
       markSaved(result.currentVersion);
     } catch (e) {

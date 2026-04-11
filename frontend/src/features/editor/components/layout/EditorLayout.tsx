@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState, type ChangeEvent, type FC } from 'react';
-import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, message, Dropdown, Modal, Radio, Slider } from 'antd';
+import { SvgShapePicker } from '../picker/SvgShapePicker';
+import { useCallback, useMemo, useRef, useState, type ChangeEvent, type FC } from 'react';
+import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, message, Dropdown, Modal, Radio, Slider, Alert } from 'antd';
 import {
   PlusSquareOutlined,
   FontSizeOutlined,
@@ -26,6 +27,8 @@ import {
   BulbOutlined,
   DeleteOutlined,
   CopyOutlined,
+  ScissorOutlined,
+  SnippetsOutlined,
   LockOutlined,
   UnlockOutlined,
   ToTopOutlined,
@@ -34,23 +37,24 @@ import {
   ColumnWidthOutlined,
   BorderBottomOutlined,
   HomeOutlined,
+  HighlightOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
-import { useEditorStore } from '../../store/editorStore';
+import { useEditorStore, type DrawMode } from '../../store/editorStore';
 import { generateId } from '../../utils/layerTree';
 import type { EditorLayer } from '../../types';
 import { EditorStage } from '../canvas/EditorStage';
 import { LayerTreePanel } from '../panel/LayerTreePanel';
 import { PropertyPanel } from '../panel/PropertyPanel';
+import { HistoryPanel } from '../panel/HistoryPanel';
 import { useAutoSave } from '../../hooks/useAutoSave';
 import { useExportImage } from '../../hooks/useExportImage';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { undo, redo } from '../../store/history';
-import { presetShapes } from '../../data/presetShapes';
 import { createLayerFromLocalImage } from '../../utils/localImageImport';
 import { AssetPicker } from '../picker/AssetPicker';
 import { useShallow } from 'zustand/react/shallow';
 import { findLayerById } from '../../utils/layerTreeOperations';
-import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 
 const { Text } = Typography;
@@ -75,55 +79,6 @@ const ToolBtn: FC<{ icon: React.ReactNode; title: string; onClick?: () => void; 
 
 // Toolbar separator
 const Sep = () => <div style={{ width: 1, height: 20, background: 'var(--divider)', margin: '0 6px', flexShrink: 0 }} />;
-
-const SvgShapePicker: FC = () => {
-  const { content, addLayer } = useEditorStore(useShallow((s) => ({ content: s.content, addLayer: s.addLayer })));
-  const [open, setOpen] = useState(false);
-
-  const handleAddSvg = useCallback(
-    (shape: typeof presetShapes[0]) => {
-      if (!content) return;
-      addLayer({
-        id: generateId(), type: 'svg', name: shape.name,
-        x: 100 + Math.random() * 200, y: 100 + Math.random() * 100,
-        width: shape.defaultWidth, height: shape.defaultHeight,
-        svgData: shape.svgData, visible: true, locked: false,
-      });
-      setOpen(false);
-    },
-    [content, addLayer]
-  );
-
-  const categories = [...new Set(presetShapes.map((s) => s.category))];
-
-  return (
-    <Popover open={open} onOpenChange={setOpen} placement="bottomLeft" trigger="click"
-      content={
-        <div style={{ width: 380, maxHeight: 380, overflowY: 'auto', padding: '4px 0' }}>
-          {categories.map((cat) => (
-            <div key={cat} style={{ marginBottom: 12 }}>
-              <Tag style={{ marginBottom: 6, fontSize: 11, borderRadius: 4 }}>{cat}</Tag>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {presetShapes.filter((s) => s.category === cat).map((shape) => (
-                  <Card key={shape.name} hoverable size="small"
-                    style={{ cursor: 'pointer', borderRadius: 6, border: '1px solid var(--border-light)' }}
-                    styles={{ body: { padding: '6px 4px' } }}
-                    onClick={() => handleAddSvg(shape)}>
-                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(shape.svgData) }}
-                      style={{ width: '100%', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} />
-                    <Text style={{ fontSize: 10, display: 'block', textAlign: 'center', color: 'var(--text-tertiary)' }}>{shape.name}</Text>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      }
-    >
-      <ToolBtn icon={<StarOutlined />} title="SVG Shapes" />
-    </Popover>
-  );
-};
 
 const LocalImagePicker: FC = () => {
   const { content, addLayer, selectLayers } = useEditorStore(useShallow((s) => ({ content: s.content, addLayer: s.addLayer, selectLayers: s.selectLayers })));
@@ -155,34 +110,91 @@ const LocalImagePicker: FC = () => {
 
 // Export Dialog
 const ExportDialog: FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
-  const { downloadImage } = useExportImage();
-  const [format, setFormat] = useState<'png' | 'jpeg'>('png');
+  const { downloadImage, downloadPDF, downloadSVG, downloadSelectedLayers, downloadAllLayersSeparately } = useExportImage();
+  const selectedLayerIds = useEditorStore((s) => s.selectedLayerIds);
+  const [format, setFormat] = useState<'png' | 'jpeg' | 'webp' | 'pdf' | 'svg'>('png');
   const [quality, setQuality] = useState(100);
+  const [resolution, setResolution] = useState<1 | 2 | 3 | 4>(2);
+  const [exportMode, setExportMode] = useState<'canvas' | 'selected' | 'layers'>('canvas');
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
     setExporting(true);
     try {
-      const success = await downloadImage(undefined, format, quality / 100);
+      let success: boolean;
+
+      if (exportMode === 'selected' && selectedLayerIds.length > 0) {
+        success = await downloadSelectedLayers(undefined, format as 'png' | 'jpeg' | 'webp', quality / 100, resolution) ?? false;
+      } else if (exportMode === 'layers') {
+        success = await downloadAllLayersSeparately(format as 'png' | 'jpeg' | 'webp', quality / 100, resolution) ?? false;
+      } else if (format === 'svg') {
+        success = await downloadSVG() ?? false;
+      } else if (format === 'pdf') {
+        success = await downloadPDF(undefined, resolution) ?? false;
+      } else {
+        success = await downloadImage(undefined, format as 'png' | 'jpeg' | 'webp', quality / 100, resolution) ?? false;
+      }
+
       if (success) message.success('Export successful');
       else message.error('Export failed');
     } catch { message.error('Export failed'); }
     finally { setExporting(false); onClose(); }
   };
 
+  const hasSelection = selectedLayerIds.length > 0;
+  const imageFormats = ['png', 'jpeg', 'webp'] as const;
+
   return (
-    <Modal title="Export" open={open} onOk={handleExport} onCancel={onClose} okText="Export" confirmLoading={exporting} width={420}>
+    <Modal title="Export" open={open} onOk={handleExport} onCancel={onClose} okText="Export" confirmLoading={exporting} width={500}>
+      {/* Export Mode */}
       <div style={{ marginBottom: 20 }}>
-        <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Format</Text>
-        <Radio.Group value={format} onChange={(e) => setFormat(e.target.value)} style={{ display: 'block', marginTop: 8 }}>
-          <Radio value="png">PNG (Lossless, supports transparency)</Radio>
-          <Radio value="jpeg">JPEG (Smaller file size)</Radio>
+        <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Export Mode</Text>
+        <Radio.Group value={exportMode} onChange={(e) => setExportMode(e.target.value)} style={{ display: 'block', marginTop: 8 }}>
+          <Radio value="canvas">Full Canvas</Radio>
+          <Radio value="selected" disabled={!hasSelection}>Selected Layers ({hasSelection ? selectedLayerIds.length : 0})</Radio>
+          <Radio value="layers">All Layers Separately</Radio>
         </Radio.Group>
       </div>
-      {format === 'jpeg' && (
+
+      {/* Format Selection */}
+      {exportMode !== 'layers' && (
+        <div style={{ marginBottom: 20 }}>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Format</Text>
+          <Radio.Group value={format} onChange={(e) => setFormat(e.target.value)} style={{ display: 'block', marginTop: 8 }}>
+            <Radio value="png">PNG (Lossless, transparency)</Radio>
+            <Radio value="jpeg">JPEG (Smaller size)</Radio>
+            <Radio value="webp">WebP (Modern, efficient)</Radio>
+            <Radio value="pdf">PDF (Document)</Radio>
+            {exportMode === 'canvas' && <Radio value="svg">SVG (Vector)</Radio>}
+          </Radio.Group>
+        </div>
+      )}
+
+      {/* Resolution */}
+      {imageFormats.includes(format as typeof imageFormats[number]) && (
+        <div style={{ marginBottom: 20 }}>
+          <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Resolution</Text>
+          <Radio.Group value={resolution} onChange={(e) => setResolution(e.target.value)} style={{ display: 'block', marginTop: 8 }}>
+            <Radio value={1}>1x (Standard)</Radio>
+            <Radio value={2}>2x (High Quality)</Radio>
+            <Radio value={3}>3x (Ultra)</Radio>
+            <Radio value={4}>4x (Maximum)</Radio>
+          </Radio.Group>
+        </div>
+      )}
+
+      {/* JPEG/WebP Quality */}
+      {(format === 'jpeg' || format === 'webp') && (
         <div>
           <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>Quality: {quality}%</Text>
           <Slider min={10} max={100} value={quality} onChange={setQuality} style={{ marginTop: 8 }} />
+        </div>
+      )}
+
+      {/* Info */}
+      {exportMode === 'layers' && (
+        <div style={{ marginTop: 8 }}>
+          <Alert type="info" message="Each layer will be exported as a separate file" style={{ fontSize: 12 }} />
         </div>
       )}
     </Modal>
@@ -199,6 +211,8 @@ export const EditorLayout: FC = () => {
     selectedLayerIds, removeLayers, toggleLayerLocked, bringToFront, sendToBack,
     groupSelectedLayers, ungroupSelectedLayers, alignLayers, distributeLayers,
     theme, toggleTheme, title, isDirty,
+    drawMode, setDrawMode,
+    hasClipboardContent, copySelectedLayers, cutSelectedLayers, pasteLayers,
   } = useEditorStore(
     useShallow((s) => ({
       content: s.content, addLayer: s.addLayer, saving: s.saving,
@@ -211,23 +225,62 @@ export const EditorLayout: FC = () => {
       alignLayers: s.alignLayers, distributeLayers: s.distributeLayers,
       theme: s.theme, toggleTheme: s.toggleTheme,
       title: s.title, isDirty: s.isDirty,
+      drawMode: s.drawMode, setDrawMode: s.setDrawMode,
+      hasClipboardContent: s.hasClipboardContent,
+      copySelectedLayers: s.copySelectedLayers,
+      cutSelectedLayers: s.cutSelectedLayers,
+      pasteLayers: s.pasteLayers,
     }))
   );
 
   const { save } = useAutoSave();
   const [exportOpen, setExportOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [pastePosition, setPastePosition] = useState<{ x: number; y: number } | null>(null);
 
   // Close context menu on any click
   const handleCanvasAreaClick = useCallback(() => { setContextMenu(null); }, []);
 
-  const handleAddRect = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'rect', name: 'Rectangle', x: 100, y: 100, width: 200, height: 150, fill: '#4A90D9', visible: true, locked: false }); }, [content, addLayer]);
-  const handleAddEllipse = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'ellipse', name: 'Ellipse', x: 100, y: 100, width: 180, height: 140, fill: '#E86B56', visible: true, locked: false }); }, [content, addLayer]);
+  // External file drag & drop
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!content) return;
+      const files = Array.from(e.dataTransfer.files);
+      for (const file of files) {
+        if (!file.type.startsWith('image/') && !file.type.startsWith('text/svg')) continue;
+        try {
+          const parsed = await createLayerFromLocalImage(file, content.canvas);
+          addLayer(parsed.layer);
+        } catch (err) {
+          message.error(`Failed to import ${file.name}`);
+        }
+      }
+    },
+    [content, addLayer]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, []);
+
   const handleAddText = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'text', name: 'Text', x: 100, y: 100, text: 'Hello', fontSize: 24, fontFamily: 'Arial', fill: '#333333', visible: true, locked: false }); }, [content, addLayer]);
-  const handleAddLine = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'line', name: 'Line', x: 100, y: 150, width: 200, height: 2, stroke: '#333333', strokeWidth: 2, points: [0, 0, 200, 0], visible: true, locked: false }); }, [content, addLayer]);
   const handleAddStar = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'star', name: 'Star', x: 100, y: 100, width: 120, height: 120, fill: '#F5A623', numPoints: 5, innerRadius: 0.4, visible: true, locked: false }); }, [content, addLayer]);
   const handleAddPolygon = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'polygon', name: 'Polygon', x: 100, y: 100, width: 120, height: 120, fill: '#7B68EE', sides: 6, visible: true, locked: false }); }, [content, addLayer]);
-  const handleAddGroup = useCallback(() => { if (!content) return; addLayer({ id: generateId(), type: 'group', name: 'Group', x: 100, y: 100, width: 200, height: 200, visible: true, locked: false, children: [] }); }, [content, addLayer]);
+
+  // Drawing mode handlers
+  const handleDrawRect = useCallback(() => {
+    setDrawMode(drawMode === 'rect' ? 'none' : 'rect');
+  }, [drawMode, setDrawMode]);
+  const handleDrawEllipse = useCallback(() => {
+    setDrawMode(drawMode === 'ellipse' ? 'none' : 'ellipse');
+  }, [drawMode, setDrawMode]);
+  const handleDrawLine = useCallback(() => {
+    setDrawMode(drawMode === 'line' ? 'none' : 'line');
+  }, [drawMode, setDrawMode]);
 
   const handleUndo = useCallback(() => { const entry = undo(); if (entry) { useEditorStore.getState().updateContent(entry.content); useEditorStore.getState().selectLayers(entry.selectedLayerIds); } }, []);
   const handleRedo = useCallback(() => { const entry = redo(); if (entry) { useEditorStore.getState().updateContent(entry.content); useEditorStore.getState().selectLayers(entry.selectedLayerIds); } }, []);
@@ -237,11 +290,19 @@ export const EditorLayout: FC = () => {
   const hasSelection = selectedLayerIds.length > 0;
   const multiSelect = selectedLayerIds.length >= 2;
   const isDark = theme === 'dark';
-  const layerCount = content?.layers.length ?? 0;
+  const layerCount = useMemo(() => {
+    if (!content) return 0;
+    const countAll = (layers: EditorLayer[]): number =>
+      layers.reduce((sum, l) => sum + 1 + (l.type === 'group' && l.children ? countAll(l.children) : 0), 0);
+    return countAll(content.layers);
+  }, [content]);
 
   // Context menu items
   const contextMenuItems = [
-    { key: 'copy', label: 'Copy', icon: <CopyOutlined />, disabled: !hasSelection },
+    { key: 'copy', label: 'Copy (Ctrl+C)', icon: <CopyOutlined />, disabled: !hasSelection },
+    { key: 'cut', label: 'Cut (Ctrl+X)', icon: <ScissorOutlined />, disabled: !hasSelection },
+    { key: 'paste', label: 'Paste (Ctrl+V)', icon: <SnippetsOutlined />, disabled: !hasClipboardContent },
+    { key: 'pasteHere', label: 'Paste Here', icon: <SnippetsOutlined />, disabled: !hasClipboardContent },
     { key: 'duplicate', label: 'Duplicate (Ctrl+D)', disabled: !hasSelection },
     { key: 'delete', label: 'Delete', icon: <DeleteOutlined />, danger: true, disabled: !hasSelection },
     { type: 'divider' as const, key: 'd1' },
@@ -260,8 +321,15 @@ export const EditorLayout: FC = () => {
     const layers = store.content?.layers ?? [];
     switch (key) {
       case 'delete': store.removeLayers(selectedLayerIds); break;
-      case 'copy': {
-        // Copy to clipboard (stored in ref, handled by keyboard shortcuts)
+      case 'copy': store.copySelectedLayers(); break;
+      case 'cut': store.cutSelectedLayers(); break;
+      case 'paste': store.pasteLayers(); break;
+      case 'pasteHere': {
+        if (pastePosition) {
+          store.pasteLayers(pastePosition);
+        } else {
+          store.pasteLayers();
+        }
         break;
       }
       case 'duplicate': {
@@ -279,7 +347,7 @@ export const EditorLayout: FC = () => {
       case 'unlock': selectedLayerIds.forEach(id => { const l = findLayerById(layers, id); if (l?.locked) store.toggleLayerLocked(id); }); break;
     }
     setContextMenu(null);
-  }, [selectedLayerIds]);
+  }, [selectedLayerIds, pastePosition]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-panel)', color: 'var(--text-primary)' }}>
@@ -308,13 +376,14 @@ export const EditorLayout: FC = () => {
 
         {/* Center: Tools */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
-          {/* Add shapes */}
-          <ToolBtn icon={<PlusSquareOutlined />} title="Rectangle (R)" onClick={handleAddRect} />
-          <ToolBtn icon={<BorderOuterOutlined />} title="Ellipse (O)" onClick={handleAddEllipse} />
-          <ToolBtn icon={<FontSizeOutlined />} title="Text (T)" onClick={handleAddText} />
-          <ToolBtn icon={<LineOutlined />} title="Line (L)" onClick={handleAddLine} />
-          <ToolBtn icon={<StarOutlined />} title="Star" onClick={handleAddStar} />
-          <ToolBtn icon={<BorderOuterOutlined />} title="Polygon" onClick={handleAddPolygon} />
+          {/* Drawing tools */}
+          <ToolBtn icon={<PlusSquareOutlined />} title="Draw Rectangle (R)" onClick={handleDrawRect} active={drawMode === 'rect'} />
+          <ToolBtn icon={<BorderOuterOutlined />} title="Draw Ellipse (O)" onClick={handleDrawEllipse} active={drawMode === 'ellipse'} />
+          <ToolBtn icon={<LineOutlined />} title="Draw Line (L)" onClick={handleDrawLine} active={drawMode === 'line'} />
+          {/* Add shapes (instant) */}
+          <ToolBtn icon={<FontSizeOutlined />} title="Add Text (T)" onClick={handleAddText} />
+          <ToolBtn icon={<StarOutlined />} title="Add Star" onClick={handleAddStar} />
+          <ToolBtn icon={<BorderOuterOutlined />} title="Add Polygon" onClick={handleAddPolygon} />
           <LocalImagePicker />
           <AssetPicker />
           <SvgShapePicker />
@@ -364,6 +433,7 @@ export const EditorLayout: FC = () => {
           <Sep />
 
           <ToolBtn icon={<SaveOutlined />} title="Save (Ctrl+S)" onClick={handleSave} />
+          <ToolBtn icon={<HistoryOutlined />} title="Version History" onClick={() => setHistoryOpen(true)} />
           <ToolBtn icon={<DownloadOutlined />} title="Export..." onClick={() => setExportOpen(true)} />
         </div>
       </div>
@@ -387,12 +457,23 @@ export const EditorLayout: FC = () => {
             background: 'var(--bg-canvas)',
           }}
           onClick={handleCanvasAreaClick}
-          onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            // Calculate paste position from mouse position
+            const container = e.currentTarget.getBoundingClientRect();
+            const state = useEditorStore.getState();
+            const canvasX = (e.clientX - container.left - state.offsetX) / state.zoom;
+            const canvasY = (e.clientY - container.top - state.offsetY) / state.zoom;
+            setPastePosition({ x: canvasX, y: canvasY });
+            setContextMenu({ x: e.clientX, y: e.clientY });
+          }}
         >
           <EditorStage />
           {/* Context Menu */}
           {contextMenu && (
-            <Dropdown menu={{ items: contextMenuItems, onClick: handleContextMenuClick }} open trigger={['contextmenu']}
+            <Dropdown menu={{ items: contextMenuItems, onClick: handleContextMenuClick }} open trigger={['contextMenu']}
               overlayStyle={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y }}>
               <div style={{ position: 'fixed', left: contextMenu.x, top: contextMenu.y, width: 0, height: 0 }} />
             </Dropdown>
@@ -425,6 +506,7 @@ export const EditorLayout: FC = () => {
       </div>
 
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} />
+      <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)} />
     </div>
   );
 };

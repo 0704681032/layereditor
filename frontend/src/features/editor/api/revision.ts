@@ -26,3 +26,7 @@ export async function getRevisionDetail(documentId: number, revisionId: number):
   const res = await api.get(`/documents/${documentId}/revisions/${revisionId}`);
   return res.data;
 }
+
+export async function restoreRevision(documentId: number, versionNo: number): Promise<void> {
+  await api.post(`/documents/${documentId}/revisions/${versionNo}/restore`);
+}

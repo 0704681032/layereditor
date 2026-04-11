@@ -58,6 +58,26 @@ public class RevisionService {
         if (revision == null) {
             throw new NotFoundException("revision not found");
         }
+        return toDetailResponse(revision);
+    }
+
+    @Transactional
+    public RevisionResponse restoreRevision(Long documentId, int versionNo) {
+        EditorDocument doc = documentService.findOrThrow(documentId);
+
+        EditorDocumentRevision revision = revisionMapper.selectByDocumentIdAndVersion(documentId, versionNo);
+        if (revision == null) {
+            throw new NotFoundException("revision not found for version " + versionNo);
+        }
+
+        documentService.restoreContent(documentId, revision.getSnapshot());
+
+        return new RevisionResponse(
+                revision.getId(), revision.getDocumentId(),
+                revision.getVersionNo(), revision.getMessage(), revision.getCreatedAt());
+    }
+
+    private RevisionDetailResponse toDetailResponse(EditorDocumentRevision revision) {
         try {
             JsonNode snapshotNode = objectMapper.readTree(revision.getSnapshot());
             return new RevisionDetailResponse(

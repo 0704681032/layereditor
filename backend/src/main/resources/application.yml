@@ -4,8 +4,8 @@ server:
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/layer_editor
-    username: jyy
-    password:
+    username: postgres
+    password: postgres
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true

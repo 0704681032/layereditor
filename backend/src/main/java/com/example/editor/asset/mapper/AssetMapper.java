@@ -20,4 +20,6 @@ public interface AssetMapper {
 
     long countByCondition(@Param("documentId") Long documentId,
                           @Param("kind") String kind);
+
+    int updateDocumentId(@Param("id") Long id, @Param("documentId") Long documentId);
 }

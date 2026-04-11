@@ -2,11 +2,11 @@
  * 吸附和对其工具函数
  */
 
-// 吸附网格大小
-const GRID_SIZE = 10;
+// 默认吸附网格大小
+const DEFAULT_GRID_SIZE = 10;
 
-// 吸附阈值（距离多少像素内开始吸附）
-const SNAP_THRESHOLD = 5;
+// 默认吸附阈值（距离多少像素内开始吸附）
+const DEFAULT_SNAP_THRESHOLD = 5;
 
 interface SnapResult {
   x: number;
@@ -22,17 +22,25 @@ interface BoundingBox {
   height: number;
 }
 
+// Spacing guide for equal spacing detection
+export interface SpacingGuide {
+  type: 'horizontal' | 'vertical';
+  targetPosition: number;
+  spacing: number;
+  snapped: boolean;
+}
+
 /**
  * 吸附到网格
  */
-export function snapToGrid(value: number, gridSize: number = GRID_SIZE): number {
+export function snapToGrid(value: number, gridSize: number = DEFAULT_GRID_SIZE): number {
   return Math.round(value / gridSize) * gridSize;
 }
 
 /**
  * 检查是否应该吸附到网格
  */
-export function shouldSnapToGrid(value: number, gridSize: number = GRID_SIZE, threshold: number = SNAP_THRESHOLD): boolean {
+export function shouldSnapToGrid(value: number, gridSize: number = DEFAULT_GRID_SIZE, threshold: number = DEFAULT_SNAP_THRESHOLD): boolean {
   const snapped = snapToGrid(value, gridSize);
   return Math.abs(value - snapped) < threshold;
 }
@@ -40,13 +48,13 @@ export function shouldSnapToGrid(value: number, gridSize: number = GRID_SIZE, th
 /**
  * 对图层位置进行网格吸附
  */
-export function snapLayerToGrid(x: number, y: number): SnapResult {
-  const snappedX = shouldSnapToGrid(x);
-  const snappedY = shouldSnapToGrid(y);
+export function snapLayerToGrid(x: number, y: number, gridSize: number = DEFAULT_GRID_SIZE, threshold: number = DEFAULT_SNAP_THRESHOLD): SnapResult {
+  const snappedX = shouldSnapToGrid(x, gridSize, threshold);
+  const snappedY = shouldSnapToGrid(y, gridSize, threshold);
 
   return {
-    x: snappedX ? snapToGrid(x) : x,
-    y: snappedY ? snapToGrid(y) : y,
+    x: snappedX ? snapToGrid(x, gridSize) : x,
+    y: snappedY ? snapToGrid(y, gridSize) : y,
     snappedX,
     snappedY,
   };
@@ -74,7 +82,7 @@ export function snapToLayers(
   currentWidth: number,
   currentHeight: number,
   otherLayers: BoundingBox[],
-  threshold: number = SNAP_THRESHOLD
+  threshold: number = DEFAULT_SNAP_THRESHOLD
 ): SnapResult {
   let bestX = currentX;
   let bestY = currentY;
@@ -170,13 +178,14 @@ export function snapPosition(
   height: number,
   otherLayers: BoundingBox[],
   snapToGridEnabled: boolean = true,
-  snapToLayersEnabled: boolean = true
+  snapToLayersEnabled: boolean = true,
+  threshold: number = DEFAULT_SNAP_THRESHOLD
 ): SnapResult {
   let result: SnapResult = { x, y, snappedX: false, snappedY: false };
 
   // 先进行图层吸附（优先级更高）
   if (snapToLayersEnabled && otherLayers.length > 0) {
-    const layerSnap = snapToLayers(x, y, width, height, otherLayers);
+    const layerSnap = snapToLayers(x, y, width, height, otherLayers, threshold);
     if (layerSnap.snappedX) {
       result.x = layerSnap.x;
       result.snappedX = true;
@@ -191,14 +200,14 @@ export function snapPosition(
   if (snapToGridEnabled) {
     if (!result.snappedX) {
       const gridX = snapToGrid(x);
-      if (shouldSnapToGrid(x)) {
+      if (shouldSnapToGrid(x, DEFAULT_GRID_SIZE, threshold)) {
         result.x = gridX;
         result.snappedX = true;
       }
     }
     if (!result.snappedY) {
       const gridY = snapToGrid(y);
-      if (shouldSnapToGrid(y)) {
+      if (shouldSnapToGrid(y, DEFAULT_GRID_SIZE, threshold)) {
         result.y = gridY;
         result.snappedY = true;
       }
@@ -207,3 +216,147 @@ export function snapPosition(
 
   return result;
 }
+
+/**
+ * 等间距吸附 - 当图层间距与其他图层间距相等时吸附
+ */
+export function snapToEqualSpacing(
+  currentX: number,
+  currentY: number,
+  currentWidth: number,
+  currentHeight: number,
+  otherLayers: BoundingBox[],
+  threshold: number = DEFAULT_SNAP_THRESHOLD,
+): { x: number; y: number; spacingGuides: SpacingGuide[] } {
+  let resultX = currentX;
+  let resultY = currentY;
+  const spacingGuides: SpacingGuide[] = [];
+
+  if (otherLayers.length < 2) {
+    return { x: resultX, y: resultY, spacingGuides };
+  }
+
+  // Current layer bounds
+  const curLeft = currentX;
+  const curRight = currentX + currentWidth;
+  const curTop = currentY;
+  const curBottom = currentY + currentHeight;
+
+  // Collect all gaps from other layers
+  const leftGaps: Array<{ layerId: string; gap: number; targetRight: number }> = [];
+  const rightGaps: Array<{ layerId: string; gap: number; targetLeft: number }> = [];
+  const topGaps: Array<{ layerId: string; gap: number; targetBottom: number }> = [];
+  const bottomGaps: Array<{ layerId: string; gap: number; targetTop: number }> = [];
+
+  for (const other of otherLayers) {
+    // Gap on left side (distance from current left to other right)
+    const gapLeft = curLeft - (other.x + other.width);
+    if (gapLeft > -50 && gapLeft < 200) {
+      leftGaps.push({
+        layerId: other.id || 'other',
+        gap: gapLeft > 0 ? gapLeft : 0,
+        targetRight: other.x + other.width,
+      });
+    }
+
+    // Gap on right side (distance from other left to current right)
+    const gapRight = other.x - curRight;
+    if (gapRight > -50 && gapRight < 200) {
+      rightGaps.push({
+        layerId: other.id || 'other',
+        gap: gapRight > 0 ? gapRight : 0,
+        targetLeft: other.x,
+      });
+    }
+
+    // Gap on top side
+    const gapTop = curTop - (other.y + other.height);
+    if (gapTop > -50 && gapTop < 200) {
+      topGaps.push({
+        layerId: other.id || 'other',
+        gap: gapTop > 0 ? gapTop : 0,
+        targetBottom: other.y + other.height,
+      });
+    }
+
+    // Gap on bottom side
+    const gapBottom = other.y - curBottom;
+    if (gapBottom > -50 && gapBottom < 200) {
+      bottomGaps.push({
+        layerId: other.id || 'other',
+        gap: gapBottom > 0 ? gapBottom : 0,
+        targetTop: other.y,
+      });
+    }
+  }
+
+  // Check for equal horizontal spacing (left side)
+  if (leftGaps.length >= 2) {
+    const positiveGaps = leftGaps.filter(g => g.gap > 0);
+    if (positiveGaps.length >= 2) {
+      positiveGaps.sort((a, b) => a.gap - b.gap);
+      for (let i = 0; i < positiveGaps.length - 1; i++) {
+        const diff = Math.abs(positiveGaps[i].gap - positiveGaps[i + 1].gap);
+        if (diff < threshold) {
+          const avgGap = (positiveGaps[i].gap + positiveGaps[i + 1].gap) / 2;
+          const targetX = positiveGaps[i].targetRight + avgGap;
+          if (Math.abs(currentX - targetX) < threshold) {
+            resultX = targetX;
+            spacingGuides.push({
+              type: 'horizontal',
+              targetPosition: currentY + currentHeight / 2,
+              spacing: Math.round(avgGap),
+              snapped: true,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Check for equal vertical spacing (top side)
+  if (topGaps.length >= 2) {
+    const positiveGaps = topGaps.filter(g => g.gap > 0);
+    if (positiveGaps.length >= 2) {
+      positiveGaps.sort((a, b) => a.gap - b.gap);
+      for (let i = 0; i < positiveGaps.length - 1; i++) {
+        const diff = Math.abs(positiveGaps[i].gap - positiveGaps[i + 1].gap);
+        if (diff < threshold) {
+          const avgGap = (positiveGaps[i].gap + positiveGaps[i + 1].gap) / 2;
+          const targetY = positiveGaps[i].targetBottom + avgGap;
+          if (Math.abs(currentY - targetY) < threshold) {
+            resultY = targetY;
+            spacingGuides.push({
+              type: 'vertical',
+              targetPosition: currentX + currentWidth / 2,
+              spacing: Math.round(avgGap),
+              snapped: true,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return { x: resultX, y: resultY, spacingGuides };
+}
+
+/**
+ * 计算图层的边界框（带ID）
+ */
+export function getBoundingBoxWithId(
+  layer: { id?: string; x: number; y: number; width?: number; height?: number },
+): BoundingBox & { id: string } {
+  return {
+    id: layer.id || 'unknown',
+    x: layer.x,
+    y: layer.y,
+    width: layer.width ?? 100,
+    height: layer.height ?? 100,
+  };
+}
+
+/**
+ * 导出默认阈值供其他模块使用
+ */
+export { DEFAULT_SNAP_THRESHOLD as SNAP_THRESHOLD, DEFAULT_GRID_SIZE as GRID_SIZE };
