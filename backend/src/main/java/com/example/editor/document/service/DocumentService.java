@@ -6,6 +6,8 @@ import com.example.editor.common.exception.ConflictException;
 import com.example.editor.common.exception.NotFoundException;
 import com.example.editor.document.dto.*;
 import com.example.editor.document.entity.EditorDocument;
+import com.example.editor.common.util.ContentValidator;
+import com.example.editor.common.util.SvgSanitizer;
 import com.example.editor.document.mapper.DocumentMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -77,13 +79,14 @@ public class DocumentService {
 
     @Transactional
     public DocumentDetailResponse create(CreateDocumentRequest request) {
+        JsonNode sanitized = ContentValidator.validateAndSanitize(request.content());
         EditorDocument doc = new EditorDocument();
         doc.setOwnerId(DEFAULT_USER_ID);
-        doc.setTitle(request.title());
+        doc.setTitle(request.title().trim());
         doc.setStatus("draft");
         doc.setSchemaVersion(request.schemaVersion());
         doc.setCurrentVersion(1);
-        doc.setContent(request.content().toString());
+        doc.setContent(sanitized.toString());
         documentMapper.insert(doc);
         return getDetail(doc.getId());
     }
@@ -95,9 +98,12 @@ public class DocumentService {
                 : title.trim();
         boolean isSvg = isSvgFile(file);
         AssetResponse asset = assetService.upload(file, null, isSvg ? "svg" : "image");
-        JsonNode content = isSvg
-                ? buildSvgDocumentContent(file, resolvedTitle)
-                : buildImageDocumentContent(file, asset);
+        JsonNode content;
+        if (isSvg) {
+            content = buildSvgDocumentContent(file, resolvedTitle);
+        } else {
+            content = buildImageDocumentContent(file, asset);
+        }
 
         EditorDocument doc = new EditorDocument();
         doc.setOwnerId(DEFAULT_USER_ID);
@@ -133,9 +139,12 @@ public class DocumentService {
             throw new ConflictException("document version conflict");
         }
 
+        // Validate and sanitize content
+        JsonNode sanitized = ContentValidator.validateAndSanitize(request.content());
+
         int updated = documentMapper.updateDocument(
-                id, DEFAULT_USER_ID, request.title(),
-                request.schemaVersion(), request.content().toString(), request.currentVersion());
+                id, DEFAULT_USER_ID, request.title().trim(),
+                request.schemaVersion(), sanitized.toString(), request.currentVersion());
         if (updated == 0) {
             throw new ConflictException("document version conflict");
         }
@@ -181,7 +190,8 @@ public class DocumentService {
 
     private JsonNode buildSvgDocumentContent(MultipartFile file, String title) {
         try {
-            String svgData = new String(file.getBytes(), StandardCharsets.UTF_8);
+            String rawSvg = new String(file.getBytes(), StandardCharsets.UTF_8);
+            String svgData = SvgSanitizer.sanitize(rawSvg);
             SvgSize size = extractSvgSize(svgData);
             ObjectNode content = createContentRoot(size.width(), size.height());
             ArrayNode layers = content.withArray("layers");
@@ -328,6 +338,9 @@ public class DocumentService {
         try {
             var factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
             var builder = factory.newDocumentBuilder();
             var document = builder.parse(new ByteArrayInputStream(svgData.getBytes(StandardCharsets.UTF_8)));
             Element root = document.getDocumentElement();
