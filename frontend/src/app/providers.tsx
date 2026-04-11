@@ -1,3 +1,4 @@
+import { theme as antTheme } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
@@ -20,6 +21,7 @@ export function AppProviders() {
           token: {
             borderRadius: 4,
           },
+          algorithm: antTheme.defaultAlgorithm,
         }}
       >
         <RouterProvider router={router} />

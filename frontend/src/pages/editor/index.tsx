@@ -1,6 +1,6 @@
 import { type FC, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Spin, message } from 'antd';
+import { ConfigProvider, Spin, message, theme as antTheme } from 'antd';
 import { useEditorStore } from '@/features/editor/store/editorStore';
 import { getDocument } from '@/features/editor/api/document';
 import { EditorLayout } from '@/features/editor/components/layout/EditorLayout';
@@ -14,24 +14,26 @@ export const EditorPage: FC = () => {
   const setDocument = useEditorStore((s) => s.setDocument);
   const content = useEditorStore((s) => s.content);
   const reset = useEditorStore((s) => s.reset);
+  const theme = useEditorStore((s) => s.theme);
+
+  // Sync dark mode class to body
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   useEffect(() => {
-    if (!id) {
-      navigate('/');
-      return;
-    }
-
+    if (!id) { navigate('/'); return; }
     const docId = parseInt(id, 10);
-    if (isNaN(docId)) {
-      message.error('Invalid document ID');
-      navigate('/');
-      return;
-    }
+    if (isNaN(docId)) { message.error('Invalid document ID'); navigate('/'); return; }
 
     getDocument(docId)
       .then((doc) => {
         const normalized = normalizePosterLayers(doc.content.layers);
-        const content = normalized.changed
+        const docContent = normalized.changed
           ? { ...doc.content, layers: normalized.layers }
           : doc.content;
 
@@ -39,22 +41,15 @@ export const EditorPage: FC = () => {
           documentId: doc.id,
           title: doc.title,
           currentVersion: doc.currentVersion,
-          content,
+          content: docContent,
         });
-        if (normalized.changed) {
-          useEditorStore.getState().markDirty();
-        }
+        if (normalized.changed) useEditorStore.getState().markDirty();
         clearHistory();
-        pushHistory({ content, selectedLayerIds: [] });
+        pushHistory({ content: docContent, selectedLayerIds: [] });
       })
-      .catch((e) => {
-        message.error(e.message || 'Failed to load document');
-        navigate('/');
-      });
+      .catch((e) => { message.error(e.message || 'Failed to load document'); navigate('/'); });
 
-    return () => {
-      reset();
-    };
+    return () => { reset(); };
   }, [id]);
 
   if (!content) {
@@ -66,8 +61,13 @@ export const EditorPage: FC = () => {
   }
 
   return (
-    <EditorErrorBoundary>
-      <EditorLayout />
-    </EditorErrorBoundary>
+    <ConfigProvider theme={{
+      algorithm: theme === 'dark' ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+      token: { borderRadius: 4 },
+    }}>
+      <EditorErrorBoundary>
+        <EditorLayout />
+      </EditorErrorBoundary>
+    </ConfigProvider>
   );
 };

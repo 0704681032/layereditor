@@ -1,4 +1,12 @@
-export type LayerType = 'rect' | 'text' | 'image' | 'group' | 'svg';
+export type LayerType = 'rect' | 'ellipse' | 'text' | 'image' | 'group' | 'svg' | 'line' | 'star' | 'polygon';
+
+export interface ShadowEffect {
+  enabled: boolean;
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+  color: string;
+}
 
 export interface BaseLayer {
   id: string;
@@ -12,6 +20,7 @@ export interface BaseLayer {
   visible?: boolean;
   locked?: boolean;
   opacity?: number;
+  shadow?: ShadowEffect;
 }
 
 export interface RectLayer extends BaseLayer {
@@ -22,6 +31,13 @@ export interface RectLayer extends BaseLayer {
   cornerRadius?: number;
 }
 
+export interface EllipseLayer extends BaseLayer {
+  type: 'ellipse';
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+}
+
 export interface TextLayer extends BaseLayer {
   type: 'text';
   text: string;
@@ -29,7 +45,10 @@ export interface TextLayer extends BaseLayer {
   fontSize?: number;
   fill?: string;
   fontStyle?: string;
+  textDecoration?: string;
   align?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
 }
 
 export interface ImageLayer extends BaseLayer {
@@ -50,4 +69,29 @@ export interface GroupLayer extends BaseLayer {
   children: EditorLayer[];
 }
 
-export type EditorLayer = RectLayer | TextLayer | ImageLayer | SvgLayer | GroupLayer;
+export interface LineLayer extends BaseLayer {
+  type: 'line';
+  stroke?: string;
+  strokeWidth?: number;
+  points?: number[];
+}
+
+export interface StarLayer extends BaseLayer {
+  type: 'star';
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  numPoints?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+}
+
+export interface PolygonLayer extends BaseLayer {
+  type: 'polygon';
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  sides?: number;
+}
+
+export type EditorLayer = RectLayer | EllipseLayer | TextLayer | ImageLayer | SvgLayer | GroupLayer | LineLayer | StarLayer | PolygonLayer;

@@ -26,13 +26,11 @@ export function useExportImage() {
         return false;
       }
 
-      // Find and hide the transformer
+      // Hide the transformer
       const children = layer.children as Konva.Node[];
       const transformer = children?.find((child) => child.name() === 'transformer') as Konva.Transformer | undefined;
       const wasVisible = transformer?.visible();
-      if (transformer) {
-        transformer.visible(false);
-      }
+      if (transformer) transformer.visible(false);
 
       // Store current viewport state
       const oldScaleX = stage.scaleX();
@@ -42,7 +40,7 @@ export function useExportImage() {
       const oldWidth = stage.width();
       const oldHeight = stage.height();
 
-      // Use 2x resolution for crisp output
+      // 2x resolution for crisp output
       const pixelRatio = 2;
       const exportWidth = content.canvas.width;
       const exportHeight = content.canvas.height;
@@ -50,34 +48,17 @@ export function useExportImage() {
       // Reset to 1:1 scale for export
       stage.scale({ x: 1, y: 1 });
       stage.position({ x: 0, y: 0 });
-      stage.size({
-        width: exportWidth,
-        height: exportHeight,
-      });
-
-      // Draw
+      stage.size({ width: exportWidth, height: exportHeight });
       layer.batchDraw();
 
       try {
-        // Export with high pixel ratio for crisp text
-        const blob = await new Promise<Blob | null>((resolve) => {
-          stage.toDataURL({
-            mimeType: `image/${format}`,
-            quality,
-            pixelRatio,
-          });
-          // Konva's toDataURL returns string, need to convert to blob
-          const dataUrl = stage.toDataURL({
-            mimeType: `image/${format}`,
-            quality,
-            pixelRatio,
-          });
-          fetch(dataUrl)
-            .then((res) => res.blob())
-            .then(resolve)
-            .catch(() => resolve(null));
+        const dataUrl = stage.toDataURL({
+          mimeType: `image/${format}`,
+          quality,
+          pixelRatio,
         });
 
+        const blob = await fetch(dataUrl).then((res) => res.blob()).catch(() => null);
         if (!blob) {
           console.error('Failed to create blob');
           return false;
@@ -92,19 +73,13 @@ export function useExportImage() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
         return true;
       } finally {
         // Restore viewport state
         stage.scale({ x: oldScaleX, y: oldScaleY });
         stage.position({ x: oldX, y: oldY });
         stage.size({ width: oldWidth, height: oldHeight });
-
-        // Restore transformer visibility
-        if (transformer && wasVisible !== undefined) {
-          transformer.visible(wasVisible);
-        }
-
+        if (transformer && wasVisible !== undefined) transformer.visible(wasVisible);
         layer.batchDraw();
       }
     },

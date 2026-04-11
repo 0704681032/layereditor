@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { EditorDocumentContent, EditorLayer, Canvas, SvgLayer, ImageLayer } from '../types';
+import type { EditorDocumentContent, EditorLayer, Canvas, SvgLayer, ImageLayer, EllipseLayer, LineLayer, StarLayer, PolygonLayer } from '../types';
 import { buildEditableTemplateFromImageLayer, getPrimaryTemplateTextLayerId } from '../data/imageTemplates';
 import { ungroupSvgLayer } from '../utils/svgParser';
 import {
@@ -33,6 +33,7 @@ interface EditorState {
   canRedo: boolean;
   showGrid: boolean;
   snapEnabled: boolean;
+  theme: 'light' | 'dark';
 
   setDocument: (payload: { documentId: number; title: string; currentVersion: number; content: EditorDocumentContent }) => void;
   selectLayers: (layerIds: string[]) => void;
@@ -44,6 +45,7 @@ interface EditorState {
   updateLayerPatch: (layerId: string, patch: Partial<EditorLayer>) => void;
   updateLayerPatchDebounced: (layerId: string, patch: Partial<EditorLayer>) => void;
   removeLayer: (layerId: string) => void;
+  removeLayers: (layerIds: string[]) => void;
   moveLayer: (layerId: string, parentId: string | null, index: number) => void;
   moveLayerUp: (layerId: string) => void;
   moveLayerDown: (layerId: string) => void;
@@ -54,6 +56,10 @@ interface EditorState {
   ungroupLayer: (layerId: string) => void;
   convertImageLayerToTemplate: (layerId: string) => void;
   nudgeLayers: (layerIds: string[], dx: number, dy: number) => void;
+  groupSelectedLayers: () => void;
+  ungroupSelectedLayers: () => void;
+  alignLayers: (alignment: 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom') => void;
+  distributeLayers: (direction: 'horizontal' | 'vertical') => void;
   setViewport: (zoom: number, offsetX: number, offsetY: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -62,6 +68,7 @@ interface EditorState {
   setStageRef: (stage: Konva.Stage | null) => void;
   toggleGrid: () => void;
   toggleSnap: () => void;
+  toggleTheme: () => void;
   markSaved: (nextVersion: number) => void;
   markDirty: () => void;
   setSaving: (saving: boolean) => void;
@@ -95,6 +102,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canRedo: false,
   showGrid: false,
   snapEnabled: true,
+  theme: (typeof window !== 'undefined' && localStorage.getItem('editor-theme') as 'light' | 'dark') || 'light',
 
   setDocument: (payload) =>
     set({
@@ -181,7 +189,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }),
 
   updateLayerPatchDebounced: (layerId, patch) => {
-    // Update state immediately for responsive UI
     set((state) => {
       if (!state.content) return state;
       return {
@@ -189,7 +196,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         isDirty: true,
       };
     });
-    // Debounce the history push
     if (patchDebounceTimer) clearTimeout(patchDebounceTimer);
     patchDebounceTimer = setTimeout(() => {
       const currentContent = get().content;
@@ -207,6 +213,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return {
         content: { ...state.content, layers: removeLayerFromTree(state.content.layers, layerId) },
         selectedLayerIds: state.selectedLayerIds.filter((id) => id !== layerId),
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  removeLayers: (layerIds) =>
+    set((state) => {
+      if (!state.content) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      let newLayers = state.content.layers;
+      for (const id of layerIds) {
+        newLayers = removeLayerFromTree(newLayers, id);
+      }
+      return {
+        content: { ...state.content, layers: newLayers },
+        selectedLayerIds: state.selectedLayerIds.filter((id) => !layerIds.includes(id)),
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -360,6 +382,212 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
+  groupSelectedLayers: () =>
+    set((state) => {
+      if (!state.content || state.selectedLayerIds.length < 2) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
+      const layers = state.content.layers;
+      const selectedIds = new Set(state.selectedLayerIds);
+
+      // Collect selected layers (only root-level for simplicity)
+      const selectedLayers = layers.filter((l) => selectedIds.has(l.id));
+      const remainingLayers = layers.filter((l) => !selectedIds.has(l.id));
+
+      if (selectedLayers.length === 0) return state;
+
+      // Calculate bounding box
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const l of selectedLayers) {
+        const x = l.x;
+        const y = l.y;
+        const w = l.width ?? (l.type === 'text' ? 200 : 100);
+        const h = l.height ?? (l.type === 'text' ? 40 : 100);
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + w);
+        maxY = Math.max(maxY, y + h);
+      }
+
+      const groupId = 'grp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+      const groupLayer: EditorLayer = {
+        id: groupId,
+        type: 'group',
+        name: 'Group',
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
+        visible: true,
+        locked: false,
+        children: selectedLayers.map((l) => ({
+          ...l,
+          x: l.x - minX,
+          y: l.y - minY,
+        })),
+      };
+
+      return {
+        content: { ...state.content, layers: [...remainingLayers, groupLayer] },
+        selectedLayerIds: [groupId],
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  ungroupSelectedLayers: () =>
+    set((state) => {
+      if (!state.content) return state;
+      const selectedIds = new Set(state.selectedLayerIds);
+      const groupIds = state.selectedLayerIds.filter((id) => {
+        const layer = findLayerById(state.content!.layers, id);
+        return layer?.type === 'group';
+      });
+      if (groupIds.length === 0) return state;
+
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
+      let newLayers = state.content.layers;
+      const newSelectedIds: string[] = [];
+
+      for (const gid of groupIds) {
+        const group = findLayerById(newLayers, gid);
+        if (!group || group.type !== 'group') continue;
+
+        const children = group.children.map((child) => ({
+          ...child,
+          x: child.x + group.x,
+          y: child.y + group.y,
+        }));
+        newSelectedIds.push(...children.map((c) => c.id));
+        newLayers = replaceLayerInTree(newLayers, gid, children);
+      }
+
+      return {
+        content: { ...state.content, layers: newLayers },
+        selectedLayerIds: newSelectedIds,
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  alignLayers: (alignment) =>
+    set((state) => {
+      if (!state.content || state.selectedLayerIds.length < 2) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
+      const layers = state.selectedLayerIds
+        .map((id) => findLayerById(state.content!.layers, id))
+        .filter(Boolean) as EditorLayer[];
+
+      if (layers.length < 2) return state;
+
+      let newLayers = state.content.layers;
+
+      // Calculate reference bounds
+      const bounds = layers.map((l) => ({
+        id: l.id,
+        x: l.x,
+        y: l.y,
+        w: l.width ?? (l.type === 'text' ? 200 : 100),
+        h: l.height ?? (l.type === 'text' ? 40 : 100),
+      }));
+
+      switch (alignment) {
+        case 'left': {
+          const minX = Math.min(...bounds.map((b) => b.x));
+          for (const b of bounds) {
+            newLayers = updateLayerInTree(newLayers, b.id, { x: minX });
+          }
+          break;
+        }
+        case 'centerH': {
+          const avgCenterX = bounds.reduce((s, b) => s + b.x + b.w / 2, 0) / bounds.length;
+          for (const b of bounds) {
+            newLayers = updateLayerInTree(newLayers, b.id, { x: avgCenterX - b.w / 2 });
+          }
+          break;
+        }
+        case 'right': {
+          const maxRight = Math.max(...bounds.map((b) => b.x + b.w));
+          for (const b of bounds) {
+            newLayers = updateLayerInTree(newLayers, b.id, { x: maxRight - b.w });
+          }
+          break;
+        }
+        case 'top': {
+          const minY = Math.min(...bounds.map((b) => b.y));
+          for (const b of bounds) {
+            newLayers = updateLayerInTree(newLayers, b.id, { y: minY });
+          }
+          break;
+        }
+        case 'centerV': {
+          const avgCenterY = bounds.reduce((s, b) => s + b.y + b.h / 2, 0) / bounds.length;
+          for (const b of bounds) {
+            newLayers = updateLayerInTree(newLayers, b.id, { y: avgCenterY - b.h / 2 });
+          }
+          break;
+        }
+        case 'bottom': {
+          const maxBottom = Math.max(...bounds.map((b) => b.y + b.h));
+          for (const b of bounds) {
+            newLayers = updateLayerInTree(newLayers, b.id, { y: maxBottom - b.h });
+          }
+          break;
+        }
+      }
+
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
+  distributeLayers: (direction) =>
+    set((state) => {
+      if (!state.content || state.selectedLayerIds.length < 3) return state;
+      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+
+      const layers = state.selectedLayerIds
+        .map((id) => findLayerById(state.content!.layers, id))
+        .filter(Boolean) as EditorLayer[];
+
+      if (layers.length < 3) return state;
+
+      let newLayers = state.content.layers;
+      const bounds = layers.map((l) => ({
+        id: l.id,
+        x: l.x,
+        y: l.y,
+        w: l.width ?? (l.type === 'text' ? 200 : 100),
+        h: l.height ?? (l.type === 'text' ? 40 : 100),
+      }));
+
+      if (direction === 'horizontal') {
+        bounds.sort((a, b) => a.x - b.x);
+        const totalWidth = bounds[bounds.length - 1].x - bounds[0].x;
+        const step = totalWidth / (bounds.length - 1);
+        for (let i = 1; i < bounds.length - 1; i++) {
+          newLayers = updateLayerInTree(newLayers, bounds[i].id, { x: bounds[0].x + step * i });
+        }
+      } else {
+        bounds.sort((a, b) => a.y - b.y);
+        const totalHeight = bounds[bounds.length - 1].y - bounds[0].y;
+        const step = totalHeight / (bounds.length - 1);
+        for (let i = 1; i < bounds.length - 1; i++) {
+          newLayers = updateLayerInTree(newLayers, bounds[i].id, { y: bounds[0].y + step * i });
+        }
+      }
+
+      return {
+        content: { ...state.content, layers: newLayers },
+        isDirty: true,
+        ...syncHistoryState(),
+      };
+    }),
+
   setViewport: (zoom, offsetX, offsetY) => set({ zoom, offsetX, offsetY }),
 
   zoomIn: () => {
@@ -395,6 +623,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
 
   toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
+
+  toggleTheme: () => set((s) => {
+    const next = s.theme === 'light' ? 'dark' : 'light';
+    localStorage.setItem('editor-theme', next);
+    return { theme: next };
+  }),
 
   markSaved: (nextVersion) => set({ currentVersion: nextVersion, isDirty: false }),
 
