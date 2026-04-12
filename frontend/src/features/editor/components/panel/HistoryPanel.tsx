@@ -1,7 +1,8 @@
 import { type FC, useCallback, useEffect, useState } from 'react';
-import { Drawer, List, Typography, Button, Space, Tag, Spin, Modal, message } from 'antd';
-import { HistoryOutlined, UndoOutlined, EyeOutlined, ClockCircleOutlined } from '@ant-design/icons';
-import { listRevisions, restoreRevision, type RevisionItem } from '../../api/revision';
+import { Drawer, Typography, Button, Space, Tag, Spin, Modal, message, Input } from 'antd';
+import { HistoryOutlined, UndoOutlined, ClockCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import { createRevision, listRevisions, restoreRevision, type RevisionItem } from '../../api/revision';
+import { getDocument } from '../../api/document';
 import { useEditorStore } from '../../store/editorStore';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -13,29 +14,53 @@ interface HistoryPanelProps {
 }
 
 export const HistoryPanel: FC<HistoryPanelProps> = ({ open, onClose }) => {
-  const { documentId, setDocument } = useEditorStore(
+  const { documentId, setDocument, updateContent } = useEditorStore(
     useShallow((s) => ({
       documentId: s.documentId,
       setDocument: s.setDocument,
+      updateContent: s.updateContent,
     }))
   );
 
   const [revisions, setRevisions] = useState<RevisionItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [restoring, setRestoring] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [revisionMessage, setRevisionMessage] = useState('');
+
+  const loadRevisions = useCallback(() => {
+    if (!documentId) return;
+    setLoading(true);
+    listRevisions(documentId)
+      .then(setRevisions)
+      .catch((err) => {
+        console.error('Failed to load revisions:', err);
+        message.error('Failed to load revision history');
+      })
+      .finally(() => setLoading(false));
+  }, [documentId]);
 
   useEffect(() => {
-    if (open && documentId) {
-      setLoading(true);
-      listRevisions(documentId)
-        .then(setRevisions)
-        .catch((err) => {
-          console.error('Failed to load revisions:', err);
-          message.error('Failed to load revision history');
-        })
-        .finally(() => setLoading(false));
+    if (open) loadRevisions();
+  }, [open, loadRevisions]);
+
+  const handleCreateRevision = useCallback(async () => {
+    if (!documentId) return;
+    setSaving(true);
+    try {
+      await createRevision(documentId, revisionMessage || undefined);
+      message.success('Version saved');
+      setRevisionMessage('');
+      setSaveModalOpen(false);
+      loadRevisions();
+    } catch (err) {
+      console.error('Failed to create revision:', err);
+      message.error('Failed to save version');
+    } finally {
+      setSaving(false);
     }
-  }, [open, documentId]);
+  }, [documentId, revisionMessage, loadRevisions]);
 
   const handleRestore = useCallback(
     (versionNo: number) => {
@@ -47,23 +72,24 @@ export const HistoryPanel: FC<HistoryPanelProps> = ({ open, onClose }) => {
         okText: 'Restore',
         cancelText: 'Cancel',
         onOk: async () => {
-          setRestoring(true);
+          setRestoring(versionNo);
           try {
             await restoreRevision(documentId, versionNo);
-            message.success('Version restored successfully');
-            // Refresh the document - we need to reload from server
-            // In a real app, we'd fetch the latest content here
-            onClose();
+            // Reload document from server to get the restored content
+            const doc = await getDocument(documentId);
+            updateContent(doc.content);
+            message.success('Version restored');
+            loadRevisions();
           } catch (err) {
             console.error('Failed to restore:', err);
             message.error('Failed to restore version');
           } finally {
-            setRestoring(false);
+            setRestoring(null);
           }
         },
       });
     },
-    [documentId, onClose]
+    [documentId, updateContent, loadRevisions]
   );
 
   const formatDate = (dateStr: string) => {
@@ -83,6 +109,17 @@ export const HistoryPanel: FC<HistoryPanelProps> = ({ open, onClose }) => {
       size="large"
       open={open}
       onClose={onClose}
+      extra={
+        <Button
+          type="primary"
+          icon={<SaveOutlined />}
+          size="small"
+          onClick={() => setSaveModalOpen(true)}
+          style={{ borderRadius: 6 }}
+        >
+          Save Version
+        </Button>
+      }
     >
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40 }}>
@@ -92,47 +129,70 @@ export const HistoryPanel: FC<HistoryPanelProps> = ({ open, onClose }) => {
         <div style={{ textAlign: 'center', padding: 40 }}>
           <ClockCircleOutlined style={{ fontSize: 48, color: 'var(--text-tertiary)' }} />
           <Text type="secondary" style={{ display: 'block', marginTop: 16 }}>
-            No revision history available
+            No version history yet
+          </Text>
+          <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+            Click "Save Version" to create your first version snapshot
           </Text>
         </div>
       ) : (
-        <List
-          dataSource={revisions}
-          renderItem={(rev) => (
-            <List.Item
-              style={{
-                padding: '12px 0',
-                borderBottom: '1px solid var(--border)',
-              }}
-            >
-              <div style={{ width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Tag color="blue">v{rev.versionNo}</Tag>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {formatDate(rev.createdAt)}
-                  </Text>
-                </div>
-                {rev.message && (
-                  <Text style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
-                    {rev.message}
-                  </Text>
-                )}
-                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                  <Button
-                    size="small"
-                    icon={<UndoOutlined />}
-                    onClick={() => handleRestore(rev.versionNo)}
-                    loading={restoring}
-                    style={{ borderRadius: 6 }}
-                  >
-                    Restore
-                  </Button>
-                </div>
-              </div>
-            </List.Item>
-          )}
-        />
+        revisions.map((rev) => (
+          <div
+            key={rev.id}
+            style={{
+              padding: '12px 0',
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Tag color="blue">v{rev.versionNo}</Tag>
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {formatDate(rev.createdAt)}
+              </Text>
+            </div>
+            {rev.message && (
+              <Text style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+                {rev.message}
+              </Text>
+            )}
+            <div style={{ marginTop: 8 }}>
+              <Button
+                size="small"
+                icon={<UndoOutlined />}
+                onClick={() => handleRestore(rev.versionNo)}
+                loading={restoring === rev.versionNo}
+                style={{ borderRadius: 6 }}
+              >
+                Restore
+              </Button>
+            </div>
+          </div>
+        ))
       )}
+
+      <Modal
+        title="Save Version"
+        open={saveModalOpen}
+        onOk={handleCreateRevision}
+        onCancel={() => { setSaveModalOpen(false); setRevisionMessage(''); }}
+        okText="Save"
+        confirmLoading={saving}
+        width={400}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Save a snapshot of the current document. You can restore to this version later.
+          </Text>
+        </div>
+        <Input
+          placeholder="Add a note for this version (optional)"
+          value={revisionMessage}
+          onChange={(e) => setRevisionMessage(e.target.value)}
+          maxLength={200}
+          showCount
+          onPressEnter={handleCreateRevision}
+        />
+      </Modal>
     </Drawer>
   );
 };

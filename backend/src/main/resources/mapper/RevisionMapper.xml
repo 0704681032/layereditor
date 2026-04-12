@@ -27,4 +27,8 @@
         WHERE document_id = #{documentId} AND version_no = #{versionNo}
     </select>
 
+    <select id="selectMaxVersionNo" resultType="java.lang.Integer">
+        SELECT MAX(version_no) FROM editor_document_revision WHERE document_id = #{documentId}
+    </select>
+
 </mapper>

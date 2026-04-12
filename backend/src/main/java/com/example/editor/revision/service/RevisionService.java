@@ -30,9 +30,13 @@ public class RevisionService {
     public RevisionResponse createRevision(Long documentId, CreateRevisionRequest request) {
         EditorDocument doc = documentService.findOrThrow(documentId);
 
+        // Auto-increment version_no based on existing revisions
+        Integer maxVersion = revisionMapper.selectMaxVersionNo(documentId);
+        int nextVersionNo = (maxVersion != null ? maxVersion : 0) + 1;
+
         EditorDocumentRevision revision = new EditorDocumentRevision();
         revision.setDocumentId(documentId);
-        revision.setVersionNo(doc.getCurrentVersion());
+        revision.setVersionNo(nextVersionNo);
         revision.setSnapshot(doc.getContent());
         revision.setMessage(request.message());
         revision.setCreatedBy(DEFAULT_USER_ID);
