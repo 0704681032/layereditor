@@ -7,6 +7,56 @@ import type { EditorLayer, RectLayer, EllipseLayer, TextLayer, StarLayer as Star
 export type ExportFormat = 'png' | 'jpeg' | 'webp' | 'pdf' | 'svg';
 export type ExportResolution = 1 | 2 | 3 | 4;
 
+// Safe download helper - delays URL revocation to ensure download starts
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Delay revocation so the browser has time to start the download
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// Calculate bounding box of all visible layers
+function calculateContentBounds(layers: EditorLayer[]): { x: number; y: number; width: number; height: number } | null {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  const processLayer = (layer: EditorLayer) => {
+    if (layer.visible === false) return;
+    const w = layer.width ?? 0;
+    const h = layer.height ?? 0;
+    if (w <= 0 && h <= 0) return;
+    minX = Math.min(minX, layer.x);
+    minY = Math.min(minY, layer.y);
+    maxX = Math.max(maxX, layer.x + w);
+    maxY = Math.max(maxY, layer.y + h);
+  };
+
+  for (const layer of layers) {
+    if (layer.type === 'group' && layer.children) {
+      for (const child of layer.children) {
+        if (child.visible === false) continue;
+        processLayer({ ...child, x: layer.x + child.x, y: layer.y + child.y });
+      }
+    } else {
+      processLayer(layer);
+    }
+  }
+
+  if (minX === Infinity) return null;
+
+  const padding = 20;
+  return {
+    x: Math.max(0, minX - padding),
+    y: Math.max(0, minY - padding),
+    width: maxX - minX + padding * 2,
+    height: maxY - minY + padding * 2,
+  };
+}
+
 export function useExportImage() {
   const { stageRef, content, title } = useEditorStore(
     useShallow((s) => ({
@@ -57,7 +107,8 @@ export function useExportImage() {
       filename?: string,
       format: 'png' | 'jpeg' | 'webp' = 'png',
       quality = 1,
-      resolution: ExportResolution = 2
+      resolution: ExportResolution = 2,
+      cropToContent = false
     ) => {
       if (!stageRef || !content) {
         console.error('No stage or content available');
@@ -71,6 +122,18 @@ export function useExportImage() {
         return false;
       }
 
+      // Determine export region
+      let exportX = 0, exportY = 0, exportW = content.canvas.width, exportH = content.canvas.height;
+      if (cropToContent) {
+        const bounds = calculateContentBounds(content.layers);
+        if (bounds) {
+          exportX = bounds.x;
+          exportY = bounds.y;
+          exportW = bounds.width;
+          exportH = bounds.height;
+        }
+      }
+
       const restoreTransformer = hideTransformer(layer);
       const restoreStage = setupStageForExport(stage, content.canvas.width, content.canvas.height);
       layer.batchDraw();
@@ -80,6 +143,10 @@ export function useExportImage() {
           mimeType: format === 'webp' ? 'image/webp' : `image/${format}`,
           quality,
           pixelRatio: resolution,
+          x: exportX,
+          y: exportY,
+          width: exportW,
+          height: exportH,
         });
 
         const blob = await fetch(dataUrl).then((res) => res.blob()).catch(() => null);
@@ -89,14 +156,7 @@ export function useExportImage() {
         }
 
         // Download
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename || title || 'canvas'}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, `${filename || title || 'canvas'}.${format}`);
         return true;
       } finally {
         restoreStage();
@@ -109,7 +169,7 @@ export function useExportImage() {
 
   // Export as PDF
   const downloadPDF = useCallback(
-    async (filename?: string, resolution: ExportResolution = 2) => {
+    async (filename?: string, resolution: ExportResolution = 2, cropToContent = false) => {
       if (!stageRef || !content) {
         console.error('No stage or content available');
         return false;
@@ -122,6 +182,18 @@ export function useExportImage() {
         return false;
       }
 
+      // Determine export region
+      let exportX = 0, exportY = 0, exportW = content.canvas.width, exportH = content.canvas.height;
+      if (cropToContent) {
+        const bounds = calculateContentBounds(content.layers);
+        if (bounds) {
+          exportX = bounds.x;
+          exportY = bounds.y;
+          exportW = bounds.width;
+          exportH = bounds.height;
+        }
+      }
+
       const restoreTransformer = hideTransformer(layer);
       const restoreStage = setupStageForExport(stage, content.canvas.width, content.canvas.height);
       layer.batchDraw();
@@ -132,16 +204,20 @@ export function useExportImage() {
           mimeType: 'image/png',
           quality: 1,
           pixelRatio: resolution,
+          x: exportX,
+          y: exportY,
+          width: exportW,
+          height: exportH,
         });
 
-        // Create PDF matching canvas dimensions (pixels to mm: 1px ≈ 0.264583mm at 96dpi)
+        // Create PDF matching export dimensions (pixels to mm: 1px ≈ 0.264583mm at 96dpi)
         const pxToMm = 25.4 / 96;
-        const pdfWidth = content.canvas.width * pxToMm;
-        const pdfHeight = content.canvas.height * pxToMm;
+        const pdfWidth = exportW * pxToMm;
+        const pdfHeight = exportH * pxToMm;
 
         const { jsPDF } = await import('jspdf');
         const pdf = new jsPDF({
-          orientation: content.canvas.width > content.canvas.height ? 'landscape' : 'portrait',
+          orientation: exportW > exportH ? 'landscape' : 'portrait',
           unit: 'mm',
           format: [pdfWidth, pdfHeight],
         });
@@ -171,14 +247,7 @@ export function useExportImage() {
 
       // Create blob and download
       const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${filename || title || 'canvas'}.svg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `${filename || title || 'canvas'}.svg`);
       return true;
     },
     [content, title]
@@ -252,14 +321,7 @@ export function useExportImage() {
         const blob = await fetch(dataUrl).then((res) => res.blob()).catch(() => null);
         if (!blob) return false;
 
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename || 'selected'}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        downloadBlob(blob, `${filename || 'selected'}.${format}`);
         return true;
       } finally {
         // Restore all visibility
@@ -323,14 +385,7 @@ export function useExportImage() {
 
           const blob = await fetch(dataUrl).then((res) => res.blob()).catch(() => null);
           if (blob) {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${editorLayer.name.replace(/[^a-zA-Z0-9]/g, '_')}.${format}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            downloadBlob(blob, `${editorLayer.name.replace(/[^a-zA-Z0-9]/g, '_')}.${format}`);
           }
         } finally {
           // Restore visibility

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
-import { Button, Dropdown, Tag, Tooltip, Typography } from 'antd';
+import { Button, Dropdown, Tag, Typography } from 'antd';
 import { StarOutlined } from '@ant-design/icons';
 import { useEditorStore } from '../../store/editorStore';
 import { generateId } from '../../utils/layerTree';
@@ -7,29 +7,6 @@ import { presetShapes } from '../../data/presetShapes';
 import DOMPurify from 'dompurify';
 
 const { Text } = Typography;
-
-// Toolbar button component
-const ToolBtn = ({ icon, title, onClick }: { icon: React.ReactNode; title: string; onClick?: () => void }) => (
-  <Tooltip title={title} mouseEnterDelay={0.4}>
-    <Button
-      icon={icon}
-      size="small"
-      type="text"
-      onClick={onClick}
-      style={{
-        width: 32,
-        height: 32,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 6,
-        border: 'none',
-        color: 'var(--icon-color)',
-        background: 'transparent',
-      }}
-    />
-  </Tooltip>
-);
 
 // Determine if shape is a template (large dimensions) vs simple shape
 const isTemplate = (shape: typeof presetShapes[0]) =>
@@ -116,7 +93,23 @@ export const SvgShapePicker = memo(() => {
       trigger={['click']}
       placement="bottomLeft"
     >
-      <ToolBtn icon={<StarOutlined />} title="SVG Shapes" />
+      <Button
+        icon={<StarOutlined />}
+        size="small"
+        type="text"
+        title="SVG Shapes"
+        style={{
+          width: 32,
+          height: 32,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 6,
+          border: 'none',
+          color: 'var(--icon-color)',
+          background: 'transparent',
+        }}
+      />
     </Dropdown>
   );
 });

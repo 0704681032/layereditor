@@ -116,6 +116,7 @@ const ExportDialog: FC<{ open: boolean; onClose: () => void }> = ({ open, onClos
   const [quality, setQuality] = useState(100);
   const [resolution, setResolution] = useState<1 | 2 | 3 | 4>(2);
   const [exportMode, setExportMode] = useState<'canvas' | 'selected' | 'layers'>('canvas');
+  const [cropToContent, setCropToContent] = useState(true);
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
@@ -130,9 +131,9 @@ const ExportDialog: FC<{ open: boolean; onClose: () => void }> = ({ open, onClos
       } else if (format === 'svg') {
         success = await downloadSVG() ?? false;
       } else if (format === 'pdf') {
-        success = await downloadPDF(undefined, resolution) ?? false;
+        success = await downloadPDF(undefined, resolution, cropToContent) ?? false;
       } else {
-        success = await downloadImage(undefined, format as 'png' | 'jpeg' | 'webp', quality / 100, resolution) ?? false;
+        success = await downloadImage(undefined, format as 'png' | 'jpeg' | 'webp', quality / 100, resolution, cropToContent) ?? false;
       }
 
       if (success) message.success('Export successful');
@@ -155,6 +156,16 @@ const ExportDialog: FC<{ open: boolean; onClose: () => void }> = ({ open, onClos
           <Radio value="layers">All Layers Separately</Radio>
         </Radio.Group>
       </div>
+
+      {/* Crop option */}
+      {exportMode === 'canvas' && (
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input type="checkbox" checked={cropToContent} onChange={(e) => setCropToContent(e.target.checked)} style={{ width: 16, height: 16 }} />
+            <Text style={{ fontSize: 13 }}>Crop to content (trim blank space)</Text>
+          </label>
+        </div>
+      )}
 
       {/* Format Selection */}
       {exportMode !== 'layers' && (
