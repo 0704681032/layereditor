@@ -65,7 +65,7 @@ start_backend() {
 
     cd "$SCRIPT_DIR/backend"
     # 使用 nohup 后台运行，指定 mac profile
-    nohup ./mvnw spring-boot:run -Dspring-boot.run.profiles=mac > /tmp/layer-editor-backend.log 2>&1 &
+    nohup mvn spring-boot:run -Dspring-boot.run.profiles=mac > /tmp/layer-editor-backend.log 2>&1 &
     BACKEND_PID=$!
     echo "       后端 PID: $BACKEND_PID"
     echo "${YELLOW}       等待后端启动（约 15-30 秒）...${NC}"

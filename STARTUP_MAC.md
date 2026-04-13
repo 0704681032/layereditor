@@ -4,9 +4,10 @@
 
 | 软件 | 版本要求 | 说明 |
 |------|----------|------|
-| **Java JDK** | 21 | 后端运行环境 |
+| **Java JDK** | 21+ | 后端运行环境 |
 | **Node.js** | 18+ | 前端构建工具 |
 | **PostgreSQL** | 16 | 数据库（本地安装） |
+| **Maven** | 3.9+ | Java 项目构建 |
 | **Git** | 最新 | 版本控制 |
 
 ---
@@ -51,7 +52,16 @@ pg_isready
 # 应输出：accepting connections
 ```
 
-### 4. 安装 Git
+### 4. 安装 Maven
+
+```bash
+brew install maven
+
+# 验证
+mvn --version
+```
+
+### 5. 安装 Git
 
 ```bash
 brew install git
@@ -92,7 +102,7 @@ cd layereditor
 
 ```bash
 cd backend
-./mvnw spring-boot:run -Dspring-boot.run.profiles=mac
+mvn spring-boot:run -Dspring-boot.run.profiles=mac
 ```
 
 首次运行会下载 Maven 依赖，约 2-5 分钟。
@@ -179,10 +189,10 @@ lsof -i :5173
 kill <PID>
 ```
 
-### 3. Maven Wrapper 无执行权限
+### 3. Maven 未安装
 
 ```bash
-chmod +x backend/mvnw
+brew install maven
 ```
 
 ### 4. npm install 网络慢
