@@ -31,19 +31,15 @@ check_postgres() {
 
 # 检查并创建数据库
 setup_database() {
-    # 检查 postgres 角色是否存在
-    if ! psql -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='postgres'" 2>/dev/null | grep -q 1; then
-        echo "${YELLOW}       创建 postgres 角色...${NC}"
-        psql -d postgres -c "CREATE ROLE postgres WITH LOGIN PASSWORD 'postgres' SUPERUSER;" 2>/dev/null || true
-    fi
+    # 使用当前系统用户连接（Mac 本地 PostgreSQL 默认认证方式）
+    local db_user=$(whoami)
 
     # 检查数据库是否存在
-    if ! psql -lqt 2>/dev/null | grep -q "layer_editor"; then
+    if ! psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw layer_editor; then
         echo "${YELLOW}       创建 layer_editor 数据库...${NC}"
-        createdb -U postgres layer_editor 2>/dev/null || \
-        psql -d postgres -c "CREATE DATABASE layer_editor OWNER postgres;" 2>/dev/null || true
+        createdb layer_editor 2>/dev/null || true
     fi
-    echo "${GREEN}       数据库已就绪${NC}"
+    echo "${GREEN}       数据库已就绪（用户: $db_user）${NC}"
 }
 
 # 检查前端依赖
@@ -68,8 +64,8 @@ start_backend() {
     fi
 
     cd "$SCRIPT_DIR/backend"
-    # 使用 nohup 后台运行
-    nohup ./mvnw spring-boot:run > /tmp/layer-editor-backend.log 2>&1 &
+    # 使用 nohup 后台运行，指定 mac profile
+    nohup ./mvnw spring-boot:run -Dspring-boot.run.profiles=mac > /tmp/layer-editor-backend.log 2>&1 &
     BACKEND_PID=$!
     echo "       后端 PID: $BACKEND_PID"
     echo "${YELLOW}       等待后端启动（约 15-30 秒）...${NC}"

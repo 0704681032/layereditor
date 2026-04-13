@@ -2,11 +2,9 @@ server:
   port: 8080
 
 spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/layer_editor
-    username: postgres
-    password: postgres
-    driver-class-name: org.postgresql.Driver
+  # 数据库配置由 profile 提供: application-mac.yml 或 application-windows.yml
+  profiles:
+    active: ${SPRING_PROFILE:mac}
   flyway:
     enabled: true
     locations: classpath:db/migration

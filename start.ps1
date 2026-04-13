@@ -21,7 +21,7 @@ if ($pgService) {
 # 启动后端
 Write-Host "[2/3] 启动后端 (Spring Boot)..." -ForegroundColor Yellow
 $backendDir = Join-Path $PSScriptRoot "backend"
-Start-Process -FilePath "cmd.exe" -ArgumentList "/k cd /d `"$backendDir`" && mvnw.cmd spring-boot:run" -WindowTitle "Layer Editor - Backend"
+Start-Process -FilePath "cmd.exe" -ArgumentList "/k cd /d `"$backendDir`" && mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=windows" -WindowTitle "Layer Editor - Backend"
 
 # 等待后端启动
 Write-Host "       等待后端启动（约 15 秒）..." -ForegroundColor Gray

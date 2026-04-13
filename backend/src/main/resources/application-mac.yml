@@ -1,0 +1,9 @@
+# Mac 本地 PostgreSQL 配置
+# 本地安装的 PostgreSQL 默认用户是系统用户名，无需密码
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/layer_editor
+    username: ${DB_USERNAME:${USER:jyy}}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver

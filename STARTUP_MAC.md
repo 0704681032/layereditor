@@ -78,10 +78,10 @@ cd layereditor
 
 启动脚本会自动：
 1. 检查 PostgreSQL 服务状态
-2. 创建 `postgres` 角色（如果不存在）
-3. 创建 `layer_editor` 数据库（如果不存在）
-4. 安装前端依赖（如果需要）
-5. 启动后端和前端
+2. 创建 `layer_editor` 数据库（如果不存在）
+3. 安装前端依赖（如果需要）
+4. 启动后端（使用 `mac` profile）
+5. 启动前端
 6. 打开浏览器
 
 ---
@@ -92,7 +92,7 @@ cd layereditor
 
 ```bash
 cd backend
-./mvnw spring-boot:run
+./mvnw spring-boot:run -Dspring-boot.run.profiles=mac
 ```
 
 首次运行会下载 Maven 依赖，约 2-5 分钟。
@@ -111,29 +111,48 @@ npm run dev
 
 ## 五、数据库配置
 
-Mac 本地安装的 PostgreSQL 默认用户是当前系统用户名（如 `jyy`）。
+项目使用 **Spring Profile** 实现环境差异兼容：
 
-启动脚本会自动创建 `postgres` 角色，确保与配置文件一致。
+| Profile | 配置文件 | 适用环境 | 数据库用户 |
+|---------|----------|----------|------------|
+| `mac` | `application-mac.yml` | Mac 本地安装 | 当前系统用户（无需密码） |
+| `windows` | `application-windows.yml` | Windows Docker | `postgres` |
 
-如果需要手动配置：
-
-```bash
-# 创建 postgres 角色
-psql -d postgres -c "CREATE ROLE postgres WITH LOGIN PASSWORD 'postgres' SUPERUSER;"
-
-# 创建数据库
-createdb -U postgres layer_editor
-```
-
-配置文件 `backend/src/main/resources/application.yml`：
-
+**Mac 配置** (`application-mac.yml`)：
 ```yaml
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/layer_editor
-    username: postgres
-    password: postgres
+    username: ${DB_USERNAME:${USER:jyy}}  # 默认使用系统用户名
+    password: ${DB_PASSWORD:}             # 本地安装通常无需密码
 ```
+
+**Windows 配置** (`application-windows.yml`)：
+```yaml
+spring:
+  datasource:
+    username: ${DB_USERNAME:postgres}     # Docker 默认用户
+    password: ${DB_PASSWORD:postgres}     # Docker 默认密码
+```
+
+### 自定义配置
+
+可通过环境变量覆盖默认配置：
+
+```bash
+# Mac 自定义用户名
+export DB_USERNAME=myuser
+export DB_PASSWORD=mypassword
+./start.sh
+```
+
+```cmd
+# Windows 自定义配置
+set DB_USERNAME=myuser
+set DB_PASSWORD=mypassword
+start.bat
+```
+
+启动脚本已自动指定 profile，无需手动配置。
 
 ---
 
