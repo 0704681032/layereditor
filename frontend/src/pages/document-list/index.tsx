@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FC, useEffect, useRef, useState } from 'react';
-import { Button, Card, List, Typography, message, Empty, Spin, Modal, Input, InputNumber, Popconfirm, Checkbox, Select, Space, Tag } from 'antd';
+import { Button, Card, Typography, App, Empty, Spin, Modal, Input, InputNumber, Popconfirm, Checkbox, Select, Space, Tag } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined, DeleteOutlined, FormOutlined, FileImageOutlined, AppstoreOutlined, LayoutOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { listDocuments, createDocument, importDocumentFromFile, updateDocumentTitle, deleteDocument, deleteDocuments } from '@/features/editor/api/document';
@@ -432,6 +432,7 @@ const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
 
 export const DocumentListPage: FC = () => {
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
@@ -623,13 +624,12 @@ export const DocumentListPage: FC = () => {
                 </Checkbox>
               </div>
             )}
-            <List grid={{ gutter: 20, xs: 1, sm: 2, md: 3, lg: 3 }}
-              dataSource={documents}
-              renderItem={(doc) => {
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
+              {documents.map((doc) => {
                 const preset = CANVAS_PRESETS.find(p => `${p.width}x${p.height}` === `${doc.content?.canvas?.width ?? 0}x${doc.content?.canvas?.height ?? 0}`);
                 return (
-                  <List.Item>
                     <Card
+                      key={doc.id}
                       hoverable
                       onClick={() => navigate(`/editor/${doc.id}`)}
                       style={{
@@ -703,10 +703,9 @@ export const DocumentListPage: FC = () => {
                         </Popconfirm>
                       </div>
                     </Card>
-                  </List.Item>
                 );
-              }}
-            />
+              })}
+            </div>
           </>
         )}
 
@@ -761,7 +760,7 @@ export const DocumentListPage: FC = () => {
           </Text>
           {creatingTemplate && (
             <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Spin size="large" tip="Creating document..." />
+              <Spin size="large"><Text type="secondary">Creating document...</Text></Spin>
             </div>
           )}
           {!creatingTemplate && (

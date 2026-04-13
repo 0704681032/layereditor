@@ -1,16 +1,17 @@
 import { type FC, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ConfigProvider, Spin, message, theme as antTheme } from 'antd';
+import { ConfigProvider, Spin, App, theme as antTheme } from 'antd';
 import { useEditorStore } from '@/features/editor/store/editorStore';
 import { getDocument } from '@/features/editor/api/document';
 import { EditorLayout } from '@/features/editor/components/layout/EditorLayout';
 import { EditorErrorBoundary } from '@/features/editor/components/layout/EditorErrorBoundary';
-import { clearHistory, pushHistory } from '@/features/editor/store/history';
+import { initHistory } from '@/features/editor/store/history';
 import { normalizePosterLayers } from '@/features/editor/data/imageTemplates';
 
 export const EditorPage: FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { message } = App.useApp();
   const setDocument = useEditorStore((s) => s.setDocument);
   const content = useEditorStore((s) => s.content);
   const reset = useEditorStore((s) => s.reset);
@@ -44,8 +45,7 @@ export const EditorPage: FC = () => {
           content: docContent,
         });
         if (normalized.changed) useEditorStore.getState().markDirty();
-        clearHistory();
-        pushHistory({ content: docContent, selectedLayerIds: [] });
+        initHistory(docContent, []);
       })
       .catch((e) => { message.error(e.message || 'Failed to load document'); navigate('/'); });
 

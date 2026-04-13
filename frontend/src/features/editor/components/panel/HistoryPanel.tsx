@@ -1,5 +1,5 @@
 import { type FC, useCallback, useEffect, useState } from 'react';
-import { Drawer, Typography, Button, Space, Tag, Spin, Modal, message, Input } from 'antd';
+import { Drawer, Typography, Button, Space, Tag, Spin, Modal, App, Input } from 'antd';
 import { HistoryOutlined, UndoOutlined, ClockCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import { createRevision, listRevisions, restoreRevision, type RevisionItem } from '../../api/revision';
 import { getDocument } from '../../api/document';
@@ -14,6 +14,7 @@ interface HistoryPanelProps {
 }
 
 export const HistoryPanel: FC<HistoryPanelProps> = ({ open, onClose }) => {
+  const { message } = App.useApp();
   const { documentId, setDocument, updateContent } = useEditorStore(
     useShallow((s) => ({
       documentId: s.documentId,

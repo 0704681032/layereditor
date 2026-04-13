@@ -67,18 +67,18 @@ export function initHistory(content: EditorDocumentContent, selectedLayerIds: st
 export function undo(): HistoryEntry | null {
   if (historyIndex <= 0) return null;
 
-  historyIndex--;
-
   if (usePatchesMode && currentContent && patchHistory.length > 0) {
-    // 使用 patches 撤销
+    // 使用 patches 撤销：对当前位置的 inverse patches 应用到 currentContent
     const entry = patchHistory[historyIndex];
     currentContent = applyPatches(currentContent, entry.inversePatches as never);
+    historyIndex--;
     return {
       content: currentContent,
-      selectedLayerIds: entry.selectedLayerIds,
+      selectedLayerIds: patchHistory[historyIndex].selectedLayerIds,
     };
   } else {
     // 传统模式
+    historyIndex--;
     return structuredClone(history[historyIndex]);
   }
 }

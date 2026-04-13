@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FC } from 'react';
-import { Button, Popover, Spin, Tooltip, Upload, message, Typography } from 'antd';
+import { Button, Popover, Spin, Tooltip, Upload, App, Typography } from 'antd';
 import { AppstoreOutlined, UploadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { listAssets, uploadAsset } from '../../api/asset';
 import { useEditorStore } from '../../store/editorStore';
@@ -15,6 +15,7 @@ interface AssetPickerProps {
 }
 
 export const AssetPicker: FC<AssetPickerProps> = ({ documentId }) => {
+  const { message } = App.useApp();
   const [open, setOpen] = useState(false);
   const [assets, setAssets] = useState<AssetResponse[]>([]);
   const [loading, setLoading] = useState(false);

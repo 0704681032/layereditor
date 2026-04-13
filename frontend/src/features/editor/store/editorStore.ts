@@ -142,6 +142,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   selectLayers: (layerIds) => set({ selectedLayerIds: layerIds }),
 
+  // Silent content update for undo/redo - does NOT push to history
+  setContentSilent: (content, selectedLayerIds) =>
+    set({ content, selectedLayerIds: selectedLayerIds ?? get().selectedLayerIds, isDirty: true, ...syncHistoryState() }),
+
   selectAll: () => {
     const { content } = get();
     if (!content) return;
@@ -150,10 +154,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   updateContent: (content) => {
-    const prevContent = get().content;
-    if (prevContent) {
-      pushHistory({ content: { ...prevContent }, selectedLayerIds: get().selectedLayerIds });
-    }
+    pushHistory({ content, selectedLayerIds: get().selectedLayerIds });
     set({ content, isDirty: true, ...syncHistoryState() });
   },
 
@@ -161,7 +162,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newContent = { ...state.content, canvas: { ...state.content.canvas, ...canvas } };
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
         content: newContent,
         isDirty: true,
@@ -173,9 +174,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newLayers = addLayerToTree(state.content.layers, layer, parentId ?? null, index);
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: [layer.id] });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         selectedLayerIds: [layer.id],
         isDirty: true,
         ...syncHistoryState(),
@@ -185,15 +187,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addLayersBatch: (layers) =>
     set((state) => {
       if (!state.content) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       let newLayers = state.content.layers;
       const newIds: string[] = [];
       for (const layer of layers) {
         newLayers = addLayerToTree(newLayers, layer, null);
         newIds.push(layer.id);
       }
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: newIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         selectedLayerIds: newIds,
         isDirty: true,
         ...syncHistoryState(),
@@ -204,7 +207,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newContent = { ...state.content, layers: updateLayerInTree(state.content.layers, layerId, patch) };
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
         content: newContent,
         isDirty: true,
@@ -233,10 +236,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   removeLayer: (layerId) =>
     set((state) => {
       if (!state.content) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newSelectedIds = state.selectedLayerIds.filter((id) => id !== layerId);
+      const newContent = { ...state.content, layers: removeLayerFromTree(state.content.layers, layerId) };
+      pushHistory({ content: newContent, selectedLayerIds: newSelectedIds });
       return {
-        content: { ...state.content, layers: removeLayerFromTree(state.content.layers, layerId) },
-        selectedLayerIds: state.selectedLayerIds.filter((id) => id !== layerId),
+        content: newContent,
+        selectedLayerIds: newSelectedIds,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -245,14 +250,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   removeLayers: (layerIds) =>
     set((state) => {
       if (!state.content) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       let newLayers = state.content.layers;
       for (const id of layerIds) {
         newLayers = removeLayerFromTree(newLayers, id);
       }
+      const newSelectedIds = state.selectedLayerIds.filter((id) => !layerIds.includes(id));
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: newSelectedIds });
       return {
-        content: { ...state.content, layers: newLayers },
-        selectedLayerIds: state.selectedLayerIds.filter((id) => !layerIds.includes(id)),
+        content: newContent,
+        selectedLayerIds: newSelectedIds,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -265,9 +272,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (!layer) return state;
       let newLayers = removeLayerFromTree(state.content.layers, layerId);
       newLayers = addLayerToTree(newLayers, layer, parentId, index);
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -277,9 +285,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newLayers = moveLayerUp(state.content.layers, layerId);
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -289,9 +298,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newLayers = moveLayerDown(state.content.layers, layerId);
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -301,9 +311,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newLayers = bringToFront(state.content.layers, layerId);
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -313,9 +324,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set((state) => {
       if (!state.content) return state;
       const newLayers = sendToBack(state.content.layers, layerId);
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -324,9 +336,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleLayerVisible: (layerId) =>
     set((state) => {
       if (!state.content) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: toggleLayerInTree(state.content.layers, layerId, 'visible') };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: toggleLayerInTree(state.content.layers, layerId, 'visible') },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -335,9 +348,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleLayerLocked: (layerId) =>
     set((state) => {
       if (!state.content) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: toggleLayerInTree(state.content.layers, layerId, 'locked') };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: toggleLayerInTree(state.content.layers, layerId, 'locked') },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -356,10 +370,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ? ungrouped.children.map(c => c.id)
         : [ungrouped.id];
 
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newContent = { ...state.content, layers: replaceLayerInTree(state.content.layers, layerId, [ungrouped]) };
+      pushHistory({ content: newContent, selectedLayerIds: newSelectedIds });
 
       return {
-        content: { ...state.content, layers: replaceLayerInTree(state.content.layers, layerId, [ungrouped]) },
+        content: newContent,
         selectedLayerIds: newSelectedIds,
         isDirty: true,
         ...syncHistoryState(),
@@ -375,11 +390,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const template = buildEditableTemplateFromImageLayer(layer as ImageLayer);
       if (!template) return state;
 
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
+      const newSelIds = [getPrimaryTemplateTextLayerId(template)];
+      const newContent = { ...state.content, layers: replaceLayerInTree(state.content.layers, layerId, [template]) };
+      pushHistory({ content: newContent, selectedLayerIds: newSelIds });
 
       return {
-        content: { ...state.content, layers: replaceLayerInTree(state.content.layers, layerId, [template]) },
-        selectedLayerIds: [getPrimaryTemplateTextLayerId(template)],
+        content: newContent,
+        selectedLayerIds: newSelIds,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -388,7 +405,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   nudgeLayers: (layerIds, dx, dy) =>
     set((state) => {
       if (!state.content) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       let newLayers = state.content.layers;
       for (const id of layerIds) {
         const layer = findLayerById(newLayers, id);
@@ -399,8 +415,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           });
         }
       }
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -409,7 +427,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   groupSelectedLayers: () =>
     set((state) => {
       if (!state.content || state.selectedLayerIds.length < 2) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
 
       const layers = state.content.layers;
       const selectedIds = new Set(state.selectedLayerIds);
@@ -451,8 +468,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         })),
       };
 
+      const newContent = { ...state.content, layers: [...remainingLayers, groupLayer] };
+      pushHistory({ content: newContent, selectedLayerIds: [groupId] });
+
       return {
-        content: { ...state.content, layers: [...remainingLayers, groupLayer] },
+        content: newContent,
         selectedLayerIds: [groupId],
         isDirty: true,
         ...syncHistoryState(),
@@ -468,8 +488,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         return layer?.type === 'group';
       });
       if (groupIds.length === 0) return state;
-
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
 
       let newLayers = state.content.layers;
       const newSelectedIds: string[] = [];
@@ -487,8 +505,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         newLayers = replaceLayerInTree(newLayers, gid, children);
       }
 
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: newSelectedIds });
+
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         selectedLayerIds: newSelectedIds,
         isDirty: true,
         ...syncHistoryState(),
@@ -498,7 +519,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   alignLayers: (alignment) =>
     set((state) => {
       if (!state.content || state.selectedLayerIds.length < 2) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
 
       const layers = state.selectedLayerIds
         .map((id) => findLayerById(state.content!.layers, id))
@@ -562,8 +582,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
       }
 
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -572,7 +594,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   distributeLayers: (direction) =>
     set((state) => {
       if (!state.content || state.selectedLayerIds.length < 3) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
 
       const layers = state.selectedLayerIds
         .map((id) => findLayerById(state.content!.layers, id))
@@ -605,8 +626,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
       }
 
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: state.selectedLayerIds });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         isDirty: true,
         ...syncHistoryState(),
       };
@@ -630,13 +653,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const layersToCopy = state.selectedLayerIds
         .map((id) => findLayerById(state.content.layers, id))
         .filter(Boolean) as EditorLayer[];
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
       let newLayers = state.content.layers;
       for (const id of state.selectedLayerIds) {
         newLayers = removeLayerFromTree(newLayers, id);
       }
+      const newContent = { ...state.content, layers: newLayers };
+      pushHistory({ content: newContent, selectedLayerIds: [] });
       return {
-        content: { ...state.content, layers: newLayers },
+        content: newContent,
         clipboard: layersToCopy,
         hasClipboardContent: layersToCopy.length > 0,
         selectedLayerIds: [],
@@ -648,7 +672,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   pasteLayers: (position) =>
     set((state) => {
       if (!state.content || state.clipboard.length === 0) return state;
-      pushHistory({ content: { ...state.content }, selectedLayerIds: state.selectedLayerIds });
 
       // Calculate offset position
       let offsetX = 20;
@@ -681,9 +704,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       const allLayers = [...state.content.layers, ...newLayers];
       const newSelectedIds = newLayers.map(l => l.id);
+      const newContent = { ...state.content, layers: allLayers };
+      pushHistory({ content: newContent, selectedLayerIds: newSelectedIds });
 
       return {
-        content: { ...state.content, layers: allLayers },
+        content: newContent,
         selectedLayerIds: newSelectedIds,
         isDirty: true,
         ...syncHistoryState(),
@@ -747,10 +772,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   finishDrawing: (layer) => {
     const { content } = get();
     if (!content) return;
-    pushHistory({ content: { ...content }, selectedLayerIds: get().selectedLayerIds });
     const newLayers = [...content.layers, layer];
+    const newContent = { ...content, layers: newLayers };
+    pushHistory({ content: newContent, selectedLayerIds: [layer.id] });
     set({
-      content: { ...content, layers: newLayers },
+      content: newContent,
       selectedLayerIds: [layer.id],
       drawMode: 'none',
       drawPreview: null,

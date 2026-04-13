@@ -1,6 +1,6 @@
 import { SvgShapePicker } from '../picker/SvgShapePicker';
 import { useCallback, useMemo, useRef, useState, type ChangeEvent, type FC } from 'react';
-import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, message, Dropdown, Modal, Radio, Slider, Alert } from 'antd';
+import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, App, Dropdown, Modal, Radio, Slider, Alert } from 'antd';
 import {
   PlusSquareOutlined,
   FontSizeOutlined,
@@ -215,6 +215,7 @@ const ExportDialog: FC<{ open: boolean; onClose: () => void }> = ({ open, onClos
 export const EditorLayout: FC = () => {
   useKeyboardShortcuts();
   const navigate = useNavigate();
+  const { message } = App.useApp();
 
   const {
     content, addLayer, saving, canUndo, canRedo, zoom,
@@ -293,8 +294,8 @@ export const EditorLayout: FC = () => {
     setDrawMode(drawMode === 'line' ? 'none' : 'line');
   }, [drawMode, setDrawMode]);
 
-  const handleUndo = useCallback(() => { const entry = undo(); if (entry) { useEditorStore.getState().updateContent(entry.content); useEditorStore.getState().selectLayers(entry.selectedLayerIds); } }, []);
-  const handleRedo = useCallback(() => { const entry = redo(); if (entry) { useEditorStore.getState().updateContent(entry.content); useEditorStore.getState().selectLayers(entry.selectedLayerIds); } }, []);
+  const handleUndo = useCallback(() => { const entry = undo(); if (entry) { useEditorStore.getState().setContentSilent(entry.content, entry.selectedLayerIds); } }, []);
+  const handleRedo = useCallback(() => { const entry = redo(); if (entry) { useEditorStore.getState().setContentSilent(entry.content, entry.selectedLayerIds); } }, []);
   const handleSave = useCallback(() => { save(); }, [save]);
 
   const zoomPercent = Math.round(zoom * 100);

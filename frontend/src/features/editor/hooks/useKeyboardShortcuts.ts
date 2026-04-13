@@ -16,11 +16,11 @@ interface ClipboardData {
 }
 
 export function useKeyboardShortcuts() {
-  const { content, selectedLayerIds, updateContent, removeLayers, addLayersBatch, nudgeLayers, selectLayers, selectAll,
+  const { content, selectedLayerIds, removeLayers, addLayersBatch, nudgeLayers, selectLayers, selectAll,
     groupSelectedLayers, ungroupSelectedLayers, drawMode, setDrawMode
   } = useEditorStore(
     useShallow((s) => ({
-      content: s.content, selectedLayerIds: s.selectedLayerIds, updateContent: s.updateContent,
+      content: s.content, selectedLayerIds: s.selectedLayerIds,
       removeLayers: s.removeLayers, addLayersBatch: s.addLayersBatch, nudgeLayers: s.nudgeLayers,
       selectLayers: s.selectLayers, selectAll: s.selectAll,
       groupSelectedLayers: s.groupSelectedLayers, ungroupSelectedLayers: s.ungroupSelectedLayers,
@@ -53,14 +53,14 @@ export function useKeyboardShortcuts() {
   const handleUndo = useCallback(() => {
     if (!canUndo()) return;
     const entry = undo();
-    if (entry) { updateContent(entry.content); useEditorStore.getState().selectLayers(entry.selectedLayerIds); }
-  }, [updateContent]);
+    if (entry) { useEditorStore.getState().setContentSilent(entry.content, entry.selectedLayerIds); }
+  }, []);
 
   const handleRedo = useCallback(() => {
     if (!canRedo()) return;
     const entry = redo();
-    if (entry) { updateContent(entry.content); useEditorStore.getState().selectLayers(entry.selectedLayerIds); }
-  }, [updateContent]);
+    if (entry) { useEditorStore.getState().setContentSilent(entry.content, entry.selectedLayerIds); }
+  }, []);
 
   const handleDelete = useCallback(() => {
     if (selectedLayerIds.length > 0) removeLayers(selectedLayerIds);
