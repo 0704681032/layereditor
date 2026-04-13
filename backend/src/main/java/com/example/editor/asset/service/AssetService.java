@@ -21,6 +21,8 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -37,14 +39,39 @@ public class AssetService {
 
     private static final Long DEFAULT_USER_ID = 1L;
 
+    // Allowed file extensions (lowercase, with dot)
+    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"
+    );
+
+    // Mapping from extension to allowed MIME types
+    private static final Map<String, Set<String>> EXTENSION_TO_MIME_TYPES = Map.ofEntries(
+            Map.entry(".png", Set.of("image/png")),
+            Map.entry(".jpg", Set.of("image/jpeg")),
+            Map.entry(".jpeg", Set.of("image/jpeg")),
+            Map.entry(".gif", Set.of("image/gif")),
+            Map.entry(".webp", Set.of("image/webp")),
+            Map.entry(".svg", Set.of("image/svg+xml")),
+            Map.entry(".bmp", Set.of("image/bmp", "image/x-ms-bmp")),
+            Map.entry(".ico", Set.of("image/x-icon", "image/vnd.microsoft.icon"))
+    );
+
+    // Dangerous extensions that must never be allowed
+    private static final Set<String> BLOCKED_EXTENSIONS = Set.of(
+            ".html", ".htm", ".js", ".mjs", ".svgz",
+            ".xml", ".xhtml", ".xht", ".css",
+            ".exe", ".bat", ".cmd", ".ps1", ".sh",
+            ".php", ".jsp", ".asp", ".aspx",
+            ".jar", ".class", ".dll", ".so", ".dylib"
+    );
+
     @Transactional
     public AssetResponse upload(MultipartFile file, Long documentId, String kind) {
+        validateUploadedFile(file);
+
         try {
             String originalFilename = file.getOriginalFilename();
-            String ext = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                ext = originalFilename.substring(originalFilename.lastIndexOf("."));
-            }
+            String ext = extractAndValidateExtension(originalFilename);
             String storedName = UUID.randomUUID().toString().replace("-", "") + ext;
             YearMonth ym = YearMonth.now();
             String relativePath = ym.getYear() + "/" + String.format("%02d", ym.getMonthValue()) + "/" + storedName;
@@ -55,6 +82,9 @@ public class AssetService {
 
             // Read bytes before transfer
             byte[] fileBytes = file.getBytes();
+
+            // Validate Content-Type matches extension
+            validateContentType(file.getContentType(), ext);
             String sha256 = calculateSha256(fileBytes);
 
             // Transfer file to storage
@@ -127,7 +157,61 @@ public class AssetService {
             }
             return hex.toString();
         } catch (Exception e) {
-            return null;
+            throw new IllegalStateException("SHA-256 algorithm not available", e);
+        }
+    }
+
+    /**
+     * Validate the uploaded file: non-empty, size limit, and filename safety.
+     */
+    private void validateUploadedFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("File must not be empty");
+        }
+        if (file.getOriginalFilename() == null || file.getOriginalFilename().isBlank()) {
+            throw new IllegalArgumentException("File name must not be empty");
+        }
+        String filename = file.getOriginalFilename();
+        // Block path traversal attempts
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            throw new IllegalArgumentException("File name contains invalid characters");
+        }
+    }
+
+    /**
+     * Extract file extension and validate against allowlist + Content-Type consistency.
+     */
+    private String extractAndValidateExtension(String originalFilename) {
+        if (originalFilename == null || !originalFilename.contains(".")) {
+            throw new IllegalArgumentException("File must have an extension");
+        }
+        String ext = originalFilename.substring(originalFilename.lastIndexOf(".")).toLowerCase();
+
+        // Block dangerous extensions first
+        if (BLOCKED_EXTENSIONS.contains(ext)) {
+            throw new IllegalArgumentException("File type '" + ext + "' is not allowed");
+        }
+
+        // Must be in allowlist
+        if (!ALLOWED_EXTENSIONS.contains(ext)) {
+            throw new IllegalArgumentException("File type '" + ext + "' is not allowed. Allowed types: " + ALLOWED_EXTENSIONS);
+        }
+
+        return ext;
+    }
+
+    /**
+     * Verify that the declared Content-Type matches the file extension.
+     */
+    private void validateContentType(String contentType, String ext) {
+        if (contentType == null || contentType.isBlank()) {
+            throw new IllegalArgumentException("Content-Type must not be empty");
+        }
+        String normalizedContentType = contentType.toLowerCase().split(";")[0].trim();
+        Set<String> allowedMimes = EXTENSION_TO_MIME_TYPES.get(ext);
+        if (allowedMimes != null && !allowedMimes.contains(normalizedContentType)) {
+            throw new IllegalArgumentException(
+                    "Content-Type '" + normalizedContentType + "' does not match file extension '" + ext + "'");
         }
     }
 }

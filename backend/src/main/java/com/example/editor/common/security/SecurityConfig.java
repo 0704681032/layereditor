@@ -1,20 +1,53 @@
 package com.example.editor.common.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    @Value("${app.auth.username:editor}")
+    private String authUsername;
+
+    @Value("${app.auth.password:editor}")
+    private String authPassword;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+            // Stateless session for SPA API
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // CSRF disabled for stateless API (no cookies for session)
+            .csrf(AbstractHttpConfigurer::disable)
+            // HTTP Basic authentication
+            .httpBasic(basic -> {})
+            // Public: static uploads, actuator health. Protected: all /api/**
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/uploads/**").permitAll()
+                .requestMatchers("/api/**").authenticated()
+                .anyRequest().permitAll()
+            );
         return http.build();
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        return new InMemoryUserDetailsManager(
+            User.builder()
+                .username(authUsername)
+                .password("{noop}" + authPassword)
+                .roles("USER")
+                .build()
+        );
     }
 }

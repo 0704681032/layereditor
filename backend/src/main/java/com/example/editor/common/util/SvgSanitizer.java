@@ -11,7 +11,9 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.ByteArrayInputStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
@@ -22,6 +24,9 @@ import javax.xml.transform.stream.StreamResult;
 /**
  * SVG sanitizer that strips dangerous elements and attributes
  * to prevent XSS and other security vulnerabilities.
+ *
+ * <p>This sanitizer uses a fail-closed approach: any SVG that fails to parse
+ * is rejected with an exception rather than silently replaced.</p>
  */
 public final class SvgSanitizer {
 
@@ -34,16 +39,17 @@ public final class SvgSanitizer {
             "link", "meta", "base", "noscript"
     );
 
-    // Dangerous attributes (event handlers and security risks)
-    private static final Set<String> DANGEROUS_ATTR_PREFIXES = Set.of(
-            "on",      // onclick, onload, onerror, etc.
-            "form",    // formaction, formtarget, etc.
-            "xlink:"   // xlink:href with javascript:
-    );
-
-    // Safe xlink:href values (only data: URIs for inline SVG)
-    private static final Set<String> SAFE_XLINK_NAMESPACES = Set.of(
-            "href"
+    // Patterns for dangerous CSS values in style attributes
+    // expression() — IE CSS expression injection
+    // url(javascript:...) — CSS-based JS execution
+    // url(data:text/html...) — CSS-based HTML injection
+    // -moz-binding — Firefox XBL injection
+    // @import — CSS import of external resources
+    // behavior: — IE HTC behavior
+    private static final Pattern DANGEROUS_CSS_PATTERN = Pattern.compile(
+            "(?i)(expression\\s*\\(|url\\s*\\(\\s*['\"]?\\s*javascript:|" +
+            "url\\s*\\(\\s*['\"]?\\s*data\\s*:\\s*text/html|" +
+            "-moz-binding|@import|behavior\\s*:)"
     );
 
     /**
@@ -51,6 +57,7 @@ public final class SvgSanitizer {
      *
      * @param svgData Raw SVG string
      * @return Sanitized SVG string safe for storage and rendering
+     * @throws IllegalArgumentException if the SVG fails to parse (fail-closed)
      */
     public static String sanitize(String svgData) {
         if (svgData == null || svgData.isBlank()) {
@@ -74,9 +81,11 @@ public final class SvgSanitizer {
             cleanNode(document.getDocumentElement());
 
             return documentToString(document);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            // If parsing fails, return a safe empty SVG
-            return "<svg xmlns=\"http://www.w3.org/2000/svg\"/>";
+            // Fail-closed: reject malformed SVG instead of returning a safe placeholder
+            throw new IllegalArgumentException("Invalid SVG content: failed to parse", e);
         }
     }
 
@@ -95,7 +104,7 @@ public final class SvgSanitizer {
         }
 
         // Clean attributes
-        var attrsToRemove = new java.util.ArrayList<Attr>();
+        var attrsToRemove = new ArrayList<Attr>();
         var attributes = element.getAttributes();
         for (int i = 0; i < attributes.getLength(); i++) {
             Attr attr = (Attr) attributes.item(i);
@@ -107,10 +116,16 @@ public final class SvgSanitizer {
             element.removeAttributeNode(attr);
         }
 
+        // Sanitize style attribute value if present and not already removed
+        Attr styleAttr = element.getAttributeNode("style");
+        if (styleAttr != null && containsDangerousCss(styleAttr.getValue())) {
+            element.removeAttributeNode(styleAttr);
+        }
+
         // Recursively clean children
         NodeList children = element.getChildNodes();
         // Collect elements to process first to avoid concurrent modification
-        var childElements = new java.util.ArrayList<Element>();
+        var childElements = new ArrayList<Element>();
         for (int i = 0; i < children.getLength(); i++) {
             Node child = children.item(i);
             if (child instanceof Element childElem) {
@@ -144,6 +159,16 @@ public final class SvgSanitizer {
         }
 
         return false;
+    }
+
+    /**
+     * Check if a CSS style value contains dangerous patterns.
+     */
+    private static boolean containsDangerousCss(String styleValue) {
+        if (styleValue == null || styleValue.isBlank()) {
+            return false;
+        }
+        return DANGEROUS_CSS_PATTERN.matcher(styleValue).find();
     }
 
     private static String documentToString(Document document) throws Exception {

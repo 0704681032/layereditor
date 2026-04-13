@@ -1,9 +1,10 @@
 # Windows Docker PostgreSQL 配置
 # Docker 安装的 PostgreSQL 默认用户是 postgres
+# 密码通过环境变量 DB_PASSWORD 设置
 
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/layer_editor
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    password: ${DB_PASSWORD:?DB_PASSWORD environment variable must be set}
     driver-class-name: org.postgresql.Driver

@@ -9,6 +9,13 @@ echo "======================================"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Load .env file if present
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'

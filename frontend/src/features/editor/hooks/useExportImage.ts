@@ -421,7 +421,7 @@ function buildSVGFromLayers(layers: EditorLayer[], canvas: { width: number; heig
   const svgElements: string[] = [];
 
   // Add background rect
-  svgElements.push(`<rect x="0" y="0" width="${canvas.width}" height="${canvas.height}" fill="${canvas.background}"/>`);
+  svgElements.push(`<rect x="0" y="0" width="${canvas.width}" height="${canvas.height}" fill="${sanitizeAttr(canvas.background)}"/>`);
 
   // Process each layer
   for (const layer of layers) {
@@ -455,7 +455,7 @@ function layerToSVG(layer: EditorLayer): string | null {
       const stroke = rect.stroke ?? 'none';
       const strokeWidth = rect.strokeWidth ?? 0;
       const cornerRadius = rect.cornerRadius ?? 0;
-      return `<rect x="${rect.x}" y="${rect.y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" rx="${cornerRadius}" ${transform} ${style}/>`;
+      return `<rect x="${rect.x}" y="${rect.y}" width="${w}" height="${h}" fill="${sanitizeAttr(fill)}" stroke="${sanitizeAttr(stroke)}" stroke-width="${strokeWidth}" rx="${cornerRadius}" ${transform} ${style}/>`;
     }
     case 'ellipse': {
       const ellipse = layer as EllipseLayer;
@@ -468,7 +468,7 @@ function layerToSVG(layer: EditorLayer): string | null {
       const fill = typeof ellipse.fill === 'string' ? ellipse.fill : '#000000';
       const stroke = ellipse.stroke ?? 'none';
       const strokeWidth = ellipse.strokeWidth ?? 0;
-      return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" ${transform} ${style}/>`;
+      return `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${sanitizeAttr(fill)}" stroke="${sanitizeAttr(stroke)}" stroke-width="${strokeWidth}" ${transform} ${style}/>`;
     }
     case 'text': {
       const text = layer as TextLayer;
@@ -484,10 +484,10 @@ function layerToSVG(layer: EditorLayer): string | null {
       else if (text.textTransform === 'lowercase') displayText = displayText.toLowerCase();
       else if (text.textTransform === 'capitalize') displayText = displayText.replace(/\b\w/g, c => c.toUpperCase());
       // Build text stroke attributes
-      const textStrokeAttr = text.textStroke ? ` stroke="${text.textStroke}" stroke-width="${text.textStrokeWidth ?? 1}"` : '';
+      const textStrokeAttr = text.textStroke ? ` stroke="${sanitizeAttr(text.textStroke)}" stroke-width="${text.textStrokeWidth ?? 1}"` : '';
       // Build wrap attributes
       const wrapAttr = text.wrap && text.wrap !== 'none' && text.maxWidth ? ` width="${text.maxWidth}"` : '';
-      return `<text x="${text.x}" y="${text.y + fontSize}" font-size="${fontSize}" font-family="${fontFamily}" font-weight="${fontWeight}" font-style="${fontStyle}" text-decoration="${textDecoration}" fill="${fill}"${textStrokeAttr}${wrapAttr} ${transform} ${style}>${escapeXML(displayText)}</text>`;
+      return `<text x="${text.x}" y="${text.y + fontSize}" font-size="${fontSize}" font-family="${sanitizeAttr(fontFamily)}" font-weight="${fontWeight}" font-style="${fontStyle}" text-decoration="${textDecoration}" fill="${sanitizeAttr(fill)}"${textStrokeAttr}${wrapAttr} ${transform} ${style}>${escapeXML(displayText)}</text>`;
     }
     case 'line': {
       const line = layer as LineLayer;
@@ -496,7 +496,7 @@ function layerToSVG(layer: EditorLayer): string | null {
       const stroke = line.stroke ?? '#333333';
       const strokeWidth = line.strokeWidth ?? 2;
       const absPoints = points.map((p, i) => i % 2 === 0 ? line.x + p : line.y + p);
-      return `<polyline points="${absPoints.join(',')}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" ${transform} ${style}/>`;
+      return `<polyline points="${absPoints.join(',')}" stroke="${sanitizeAttr(stroke)}" stroke-width="${strokeWidth}" fill="none" ${transform} ${style}/>`;
     }
     case 'star': {
       const star = layer as StarLayerType;
@@ -511,7 +511,7 @@ function layerToSVG(layer: EditorLayer): string | null {
       const stroke = star.stroke ?? 'none';
       const strokeWidth = star.strokeWidth ?? 0;
       const points = generateStarPoints(cx, cy, numPoints, outerRadius, innerRadius);
-      return `<polygon points="${points.join(',')}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" ${transform} ${style}/>`;
+      return `<polygon points="${points.join(',')}" fill="${sanitizeAttr(fill)}" stroke="${sanitizeAttr(stroke)}" stroke-width="${strokeWidth}" ${transform} ${style}/>`;
     }
     case 'polygon': {
       const polygon = layer as PolygonLayer;
@@ -525,7 +525,7 @@ function layerToSVG(layer: EditorLayer): string | null {
       const stroke = polygon.stroke ?? 'none';
       const strokeWidth = polygon.strokeWidth ?? 0;
       const points = generatePolygonPoints(cx, cy, sides, radius);
-      return `<polygon points="${points.join(',')}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" ${transform} ${style}/>`;
+      return `<polygon points="${points.join(',')}" fill="${sanitizeAttr(fill)}" stroke="${sanitizeAttr(stroke)}" stroke-width="${strokeWidth}" ${transform} ${style}/>`;
     }
     case 'group': {
       const group = layer as GroupLayer;
@@ -537,7 +537,7 @@ function layerToSVG(layer: EditorLayer): string | null {
         })
         .filter(Boolean)
         .join('\n    ');
-      return `<g id="${layer.id}" ${transform} ${style}>\n    ${childSVGs}\n  </g>`;
+      return `<g id="${sanitizeAttr(layer.id)}" ${transform} ${style}>\n    ${childSVGs}\n  </g>`;
     }
     case 'image': {
       // Images are complex - skip for now or embed as base64
@@ -564,6 +564,12 @@ function escapeXML(str: string): string {
       default: return c;
     }
   });
+}
+
+// Helper to sanitize SVG attribute values to prevent attribute injection
+// Strips characters that could break out of the attribute context
+function sanitizeAttr(value: string): string {
+  return escapeXML(value.replace(/[<>"']/g, ''));
 }
 
 // Generate star polygon points
