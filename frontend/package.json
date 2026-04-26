@@ -15,6 +15,7 @@
     "@types/dompurify": "^3.0.5",
     "antd": "^6.3.5",
     "axios": "^1.15.0",
+    "canvg": "^4.0.3",
     "dompurify": "^3.3.3",
     "immer": "^11.1.4",
     "jspdf": "^4.2.1",
