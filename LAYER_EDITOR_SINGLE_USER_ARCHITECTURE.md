@@ -1059,3 +1059,398 @@ type EditorState = {
 - MinIO/S3 管素材文件
 
 这套方案实现成本低，后续扩展到多人协作时也不需要推翻重来。
+
+---
+
+## 11. AI图像处理模块架构
+
+### 模块概述
+
+AI图像处理模块集成火山引擎（字节跳动豆包）视觉智能API，提供以下功能：
+
+| 功能 | API Action | 说明 |
+|------|------------|------|
+| 智能抠图 | SegmentImage / SegmentHumanBody | 去除背景，提取主体 |
+| AI扩图 | ImageOutpainting | 智能扩展图片边界 |
+| 消除笔 | ImageInpainting | 消除杂物、水印 |
+| 超分辨率 | ImageSuperResolution | 图片画质增强 |
+
+### 后端包结构
+
+```text
+com.example.editor.ai
+├── client
+│   ├── VolcengineVisualClient.java    # OpenFeign客户端
+│   └── VolcengineFeignConfig.java     # 签名认证拦截器
+├── config
+│   └── VolcengineProperties.java      # 配置属性类
+├── controller
+│   └── AiImageController.java         # API控制器
+├── dto
+│   ├── AiStatusResponse.java          # 状态响应
+│   ├── VolcengineMattingRequest.java  # 抠图请求
+│   ├── VolcengineResponse.java        # 通用响应
+│   └── ...
+└── service
+    └── AiImageService.java            # AI服务层
+```
+
+### OpenFeign + HttpClient5 架构
+
+使用OpenFeign声明式客户端调用火山引擎API：
+
+```java
+@FeignClient(
+    name = "volcengine-visual",
+    url = "${app.volcengine.endpoint}",
+    configuration = VolcengineFeignConfig.class
+)
+public interface VolcengineVisualClient {
+    @PostMapping("/")
+    VolcengineResponse matting(@RequestParam("Action") String action,
+                               @RequestParam("Version") String version,
+                               @RequestBody VolcengineMattingRequest request);
+}
+```
+
+配置HttpClient5连接池：
+
+```java
+@Configuration
+public class HttpClientConfig {
+    @Bean
+    public PoolingHttpClientConnectionManager poolingConnectionManager() {
+        PoolingHttpClientConnectionManager manager = new PoolingHttpClientConnectionManager();
+        manager.setMaxTotal(200);
+        manager.setDefaultMaxPerRoute(50);
+        return manager;
+    }
+    
+    @Bean
+    public Client feignClient(CloseableHttpClient httpClient) {
+        return new ApacheHttp5Client(httpClient);
+    }
+}
+```
+
+### 签名认证
+
+火山引擎使用类似AWS Signature V4的签名算法：
+
+```java
+public class VolcengineSignatureInterceptor implements RequestInterceptor {
+    @Override
+    public void apply(RequestTemplate template) {
+        String now = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+            .withZone(ZoneOffset.UTC)
+            .format(Instant.now());
+        
+        // 构建规范请求
+        // 计算签名
+        // 添加Authorization头
+        template.header("X-Date", now);
+        template.header("Authorization", authorization);
+    }
+}
+```
+
+### SSRF防护
+
+AI服务层实现SSRF防护，禁止访问私有网络：
+
+```java
+private static final Set<String> BLOCKED_URL_PATTERNS = Set.of(
+    "localhost", "127.0.0.1", "0.0.0.0",
+    "10.", "192.168.", "172.16.", "172.17.", ..., "172.31.",
+    "::1", "0:0:0:0:0:0:0:1", "fc00:", "fd00:"
+);
+
+private void validateImageUrl(String imageUrl) {
+    String host = extractHost(imageUrl);
+    for (String blocked : BLOCKED_URL_PATTERNS) {
+        if (host.equalsIgnoreCase(blocked) || host.startsWith(blocked)) {
+            throw new IllegalArgumentException("Access to private network URLs is not allowed");
+        }
+    }
+}
+```
+
+### 前端集成
+
+```typescript
+// frontend/src/features/editor/api/aiImage.ts
+export async function mattingImage(imageUrl: string, type: 'human' | 'general'): Promise<string> {
+  const response = await fetch('/api/ai/matting', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageUrl, type })
+  });
+  return response.json();
+}
+```
+
+在PropertyPanel添加AI工具按钮：
+
+```tsx
+const AIImageTools: FC<{ layer: ImageLayer }> = ({ layer }) => (
+  <div>
+    <SectionHeader title="AI Tools" />
+    <Button onClick={handleMatting}>抠图</Button>
+    <Button onClick={handleOutpainting}>扩图</Button>
+    <Button onClick={handleInpainting}>消除</Button>
+    <Button onClick={handleSuperResolution}>增强</Button>
+  </div>
+);
+```
+
+---
+
+## 12. 安全架构设计
+
+### 认证方案
+
+使用HTTP Basic认证，适合单人版快速部署：
+
+```java
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig {
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/**").authenticated()
+                .anyRequest().permitAll()
+            )
+            .httpBasic(httpBasic -> {});
+        return http.build();
+    }
+}
+```
+
+### CORS配置
+
+支持多端口开发环境：
+
+```java
+private CorsConfigurationSource corsConfigurationSource() {
+    return request -> {
+        CorsConfiguration config = new CorsConfiguration();
+        config.addAllowedOrigin("http://localhost:5173");
+        config.addAllowedOrigin("http://localhost:5174");
+        // ... 5175-5179
+        config.addAllowedOrigin("http://localhost:3000");
+        config.addAllowedMethod("*");
+        config.addAllowedHeader("*");
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+        return config;
+    };
+}
+```
+
+### 文件上传安全
+
+```java
+@PostMapping("/upload")
+public AssetResponse upload(@RequestParam("file") MultipartFile file) {
+    // 1. 校验文件类型
+    String mimeType = file.getContentType();
+    if (!ALLOWED_TYPES.contains(mimeType)) {
+        throw new IllegalArgumentException("Invalid file type");
+    }
+    
+    // 2. 校验文件大小
+    if (file.getSize() > MAX_FILE_SIZE) {
+        throw new IllegalArgumentException("File too large");
+    }
+    
+    // 3. 计算SHA256哈希
+    String sha256 = calculateSha256(file.getBytes());
+    
+    // 4. 保存文件
+    // ...
+}
+```
+
+### SVG Sanitizer
+
+防止SVG文件中的XSS攻击：
+
+```java
+@Component
+public class SvgSanitizer {
+    private final ElementsPolicy ELEMENT_POLICY = ElementsPolicy.Builder()
+        .allowElements("svg", "path", "circle", "rect", "line", "polygon", "g", ...)
+        .build();
+    
+    public String sanitize(String svgContent) {
+        return HtmlPolicyBuilder.factory().toPolicy(ELEMENT_POLICY)
+            .sanitize(svgContent);
+    }
+}
+```
+
+---
+
+## 13. 配置管理架构
+
+### Properties集中配置
+
+使用`@ConfigurationProperties`替代分散的`@Value`：
+
+```java
+@Data
+@Component
+@ConfigurationProperties(prefix = "app.volcengine")
+public class VolcengineProperties {
+    private String accessKey;
+    private String secretKey;
+    private String endpoint = "https://visual.volcengineapi.com";
+    private String service = "cv";
+    private String region = "cn-north-1";
+    private String version = "2022-08-31";
+    
+    public boolean isConfigured() {
+        return accessKey != null && !accessKey.isEmpty()
+            && secretKey != null && !secretKey.isEmpty();
+    }
+}
+```
+
+```java
+@Data
+@Component
+@ConfigurationProperties(prefix = "feign.httpclient")
+public class HttpClientProperties {
+    private int maxConnections = 200;
+    private int maxConnectionsPerRoute = 50;
+    private long connectionTimeout = 5000;
+    private long socketTimeout = 60000;
+    private long connectionTtl = 1800000;
+    private long idleTimeout = 600000;
+}
+```
+
+### 多环境配置
+
+通过Spring Profile支持多环境：
+
+```yaml
+# application.yml (通用配置)
+spring:
+  profiles:
+    active: ${SPRING_PROFILE:windows}
+
+# application-mac.yml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/layer_editor
+    username: jyy
+    password:
+
+# application-windows.yml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/layer_editor
+    username: postgres
+    password: postgres
+```
+
+启动时指定Profile：
+
+```bash
+# Mac
+export SPRING_PROFILE=mac
+mvn spring-boot:run
+
+# Windows
+set SPRING_PROFILE=windows
+mvn spring-boot:run
+```
+
+---
+
+## 14. 连接池配置
+
+### 数据库连接池 (HikariCP)
+
+```yaml
+spring:
+  datasource:
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      connection-timeout: 30000          # 30秒获取连接超时
+      idle-timeout: 600000               # 10分钟空闲连接超时
+      max-lifetime: 1800000              # 30分钟连接最大生命周期
+      validation-timeout: 5000           # 5秒验证连接超时
+      leak-detection-threshold: 60000    # 60秒连接泄露检测
+      pool-name: LayerEditorHikariPool
+```
+
+### HTTP连接池 (HttpClient5)
+
+```yaml
+feign:
+  httpclient:
+    max-connections: 200
+    max-connections-per-route: 50
+    connection-timeout: 5000             # 5秒连接超时
+    socket-timeout: 60000                # 60秒Socket超时（AI处理可能耗时）
+    connection-ttl: 1800000              # 30分钟连接生命周期
+    idle-timeout: 600000                 # 10分钟空闲连接超时
+```
+
+---
+
+## 15. 版本历史
+
+| 版本 | 主要更新 |
+|------|----------|
+| v0.3 | AI图像处理模块（火山引擎集成）、OpenFeign+HttpClient5、配置Properties重构 |
+| v0.2 | SVG/Sketch导入解析、安全加固（SSRF防护、SVG Sanitizer）、CORS修复 |
+| v0.1 | 基础图层编辑功能、文档/素材/版本管理 |
+
+---
+
+## 附录：API接口完整列表
+
+### 文档 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/documents?page=0&size=20` | 文档列表（分页） |
+| GET | `/api/documents/{id}` | 文档详情 |
+| POST | `/api/documents` | 创建文档 |
+| PUT | `/api/documents/{id}` | 更新文档（乐观锁） |
+| DELETE | `/api/documents/{id}` | 删除文档（软删除） |
+
+### 素材 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/assets` | 素材列表 |
+| GET | `/api/assets/{id}` | 素材详情 |
+| POST | `/api/assets/upload` | 上传素材 |
+| DELETE | `/api/assets/{id}` | 删除素材 |
+
+### AI图像处理 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/ai/status` | AI服务状态 |
+| POST | `/api/ai/matting` | 智能抠图 |
+| POST | `/api/ai/outpainting` | AI扩图 |
+| POST | `/api/ai/inpainting` | 消除笔 |
+| POST | `/api/ai/super-resolution` | 超分辨率 |
+
+### 版本历史 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/documents/{id}/revisions` | 版本列表 |
+| GET | `/api/documents/{id}/revisions/{revisionId}` | 版本详情 |
+| POST | `/api/documents/{id}/revisions` | 创建版本快照 |
