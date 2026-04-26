@@ -573,12 +573,22 @@ function createEllipseLayer(el: ParsedSvgElement, baseX: number, baseY: number):
 function createPathLayer(el: ParsedSvgElement, baseX: number, baseY: number): EditorLayer {
   const attrs = el.attributes;
 
-  const pathSvg = `<svg xmlns="http://www.w3.org/2000/svg"><path ${Object.entries(attrs).filter(([k]) => k !== 'transform').map(([k, v]) => `${k}="${v}"`).join(' ')}/></svg>`;
-
   const bounds = estimatePathBounds(attrs.d);
 
   const transform = el.transform || IDENTITY_TRANSFORM;
   const transformedBounds = transformBounds(transform, bounds);
+
+  // Normalize path data to start from (0, 0) by subtracting the bounds offset
+  // This ensures the path renders correctly when placed at x, y position
+  const normalizedD = normalizePathData(attrs.d, bounds.minX, bounds.minY);
+
+  // Create SVG with normalized path data
+  const pathAttrs = Object.entries(attrs)
+    .filter(([k]) => k !== 'transform' && k !== 'd')
+    .map(([k, v]) => `${k}="${v}"`)
+    .join(' ');
+
+  const pathSvg = `<svg xmlns="http://www.w3.org/2000/svg"><path d="${normalizedD}" ${pathAttrs}/></svg>`;
 
   return {
     id: generateId(),
@@ -594,6 +604,85 @@ function createPathLayer(el: ParsedSvgElement, baseX: number, baseY: number): Ed
     visible: true,
     locked: false,
   };
+}
+
+// Normalize path data by subtracting offset from all coordinates
+function normalizePathData(d: string, offsetX: number, offsetY: number): string {
+  if (!d || (offsetX === 0 && offsetY === 0)) return d;
+
+  // Replace all coordinate pairs with normalized values
+  // SVG path commands: M, L, H, V, C, S, Q, T, A, Z
+  const result = d.replace(/(-?\d+\.?\d*)/g, (match, numStr) => {
+    const num = parseFloat(numStr);
+    // We need to track whether this is an x or y coordinate
+    // This is a simplified approach - adjust alternating numbers
+    return numStr; // Keep original for now, handle in a better way
+  });
+
+  // Better approach: parse and reconstruct
+  return shiftPathCoordinates(d, offsetX, offsetY);
+}
+
+// Shift all coordinates in path data by given offset
+function shiftPathCoordinates(d: string, offsetX: number, offsetY: number): string {
+  if (!d) return d;
+
+  // Parse path commands and adjust coordinates
+  const commands = d.match(/[MLHVCSQTAZ][^MLHVCSQTAZ]*/gi) || [];
+
+  let result = '';
+  let isX = true; // Track alternating x/y coordinates
+
+  for (const cmd of commands) {
+    const type = cmd[0];
+    const params = cmd.slice(1).trim();
+
+    if (type === 'Z' || type === 'z') {
+      result += type;
+      continue;
+    }
+
+    // For H (horizontal), only adjust x; for V (vertical), only adjust y
+    if (type === 'H' || type === 'h') {
+      const nums = params.match(/-?\d+\.?\d*/g) || [];
+      const adjusted = nums.map(n => (parseFloat(n) - offsetX).toFixed(2));
+      result += type + adjusted.join(' ');
+      continue;
+    }
+
+    if (type === 'V' || type === 'v') {
+      const nums = params.match(/-?\d+\.?\d*/g) || [];
+      const adjusted = nums.map(n => (parseFloat(n) - offsetY).toFixed(2));
+      result += type + adjusted.join(' ');
+      continue;
+    }
+
+    // For other commands, adjust alternating x/y pairs
+    const nums = params.match(/-?\d+\.?\d*/g) || [];
+    const adjusted: string[] = [];
+
+    // Handle special case for A (arc) which has 7 parameters: rx, ry, rotation, large-arc, sweep, x, y
+    if (type === 'A' || type === 'a') {
+      for (let i = 0; i < nums.length; i += 7) {
+        // First 5 params stay unchanged (rx, ry, rotation, large-arc-flag, sweep-flag)
+        adjusted.push(nums[i], nums[i+1], nums[i+2], nums[i+3], nums[i+4]);
+        // Last 2 params (x, y) get offset
+        adjusted.push((parseFloat(nums[i+5]) - offsetX).toFixed(2));
+        adjusted.push((parseFloat(nums[i+6]) - offsetY).toFixed(2));
+      }
+    } else {
+      // M, L, C, S, Q, T - standard alternating x/y
+      for (let i = 0; i < nums.length; i += 2) {
+        const x = parseFloat(nums[i]) - offsetX;
+        const y = parseFloat(nums[i+1]) - offsetY;
+        adjusted.push(x.toFixed(2), y.toFixed(2));
+      }
+    }
+
+    result += type + adjusted.join(' ');
+  }
+
+  return result;
 }
 
 function estimatePathBounds(d: string): { minX: number; minY: number; maxX: number; maxY: number } {

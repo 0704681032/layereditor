@@ -1,5 +1,5 @@
 import { type FC, useCallback, useMemo, useState, useEffect, memo, useRef } from 'react';
-import { Rect, Text, Group, Image as KonvaImage, Ellipse, Line, Star, RegularPolygon } from 'react-konva';
+import { Rect, Text, Group, Image as KonvaImage, Ellipse, Line, Star, RegularPolygon, Path } from 'react-konva';
 import Konva from 'konva';
 import { useEditorStore } from '../../store/editorStore';
 import { useImageAsset } from '../../hooks/useImageAsset';
@@ -564,9 +564,61 @@ const GroupComponent: FC<{ layer: GroupLayer }> = memo(({ layer }) => {
 const SvgComponent: FC<{ layer: SvgLayer }> = memo(({ layer }) => {
   const selectLayers = useEditorStore((s) => s.selectLayers);
   const { handleDragMove, handleDragEnd } = useSmartGuideDrag(layer);
-  const svgRef = useRef<Konva.Image>(null);
+  const svgRef = useRef<Konva.Node>(null);
   useKonvaFilters(svgRef, layer.filters);
 
+  // Parse SVG data to extract path information for direct rendering
+  const pathData = useMemo(() => {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(layer.svgData, 'image/svg+xml');
+      const svg = doc.querySelector('svg');
+      if (!svg) return null;
+
+      // Find the first path element
+      const path = svg.querySelector('path');
+      if (!path) return null;
+
+      return {
+        d: path.getAttribute('d') || '',
+        fill: path.getAttribute('fill') || layer.fill || '#e0e0e0',
+        stroke: path.getAttribute('stroke') || layer.stroke,
+        strokeWidth: parseFloat(path.getAttribute('stroke-width') || '1'),
+        // Check if it's a single path (can render directly) or complex SVG (need image)
+        isSimplePath: svg.querySelectorAll('path, rect, circle, ellipse, text, g').length === 1
+      };
+    } catch {
+      return null;
+    }
+  }, [layer.svgData, layer.fill, layer.stroke]);
+
+  // If it's a simple path, render directly with Konva.Path (editable)
+  if (pathData && pathData.isSimplePath && pathData.d) {
+    return (
+      <Path
+        ref={svgRef as React.RefObject<Konva.Path>}
+        id={layer.id}
+        x={layer.x}
+        y={layer.y}
+        data={pathData.d}
+        fill={pathData.fill === 'none' ? undefined : pathData.fill}
+        stroke={pathData.stroke}
+        strokeWidth={pathData.strokeWidth}
+        rotation={layer.rotation ?? 0}
+        opacity={layer.opacity ?? 1}
+        visible={layer.visible !== false}
+        draggable={!layer.locked}
+        onClick={() => selectLayers([layer.id])}
+        onTap={() => selectLayers([layer.id])}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+        {...toShadowProps(layer.shadow)}
+        {...toBlendMode(layer.blendMode)}
+      />
+    );
+  }
+
+  // Complex SVG: render as Image
   const imageUrl = useMemo(() => {
     const blob = new Blob([layer.svgData], { type: 'image/svg+xml' });
     return URL.createObjectURL(blob);

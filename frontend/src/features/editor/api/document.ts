@@ -18,6 +18,13 @@ interface UpdateTitleRequest {
   title: string;
 }
 
+interface DocumentListResponse {
+  items: DocumentListItem[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 export async function createDocument(data: CreateDocumentRequest): Promise<EditorDocumentDetail> {
   const res = await api.post('/documents', data);
   return res.data;
@@ -40,8 +47,8 @@ export async function getDocument(id: number): Promise<EditorDocumentDetail> {
   return res.data;
 }
 
-export async function listDocuments(): Promise<DocumentListItem[]> {
-  const res = await api.get('/documents');
+export async function listDocuments(page = 0, size = 20): Promise<DocumentListResponse> {
+  const res = await api.get('/documents', { params: { page, size } });
   return res.data;
 }
 

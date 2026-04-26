@@ -36,8 +36,14 @@ public class DocumentController {
     }
 
     @GetMapping
-    public ApiResponse<List<DocumentListItemResponse>> list() {
-        return ApiResponse.ok(documentService.listDocuments());
+    public ApiResponse<DocumentListResponse> list(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+        // Validate pagination parameters
+        if (page < 0) page = 0;
+        if (size < 1) size = 20;
+        if (size > 100) size = 100;  // Max 100 items per page
+        return ApiResponse.ok(documentService.listDocuments(page, size));
     }
 
     @PutMapping("/{id}")

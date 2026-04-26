@@ -10,9 +10,9 @@ function readFileAsDataUrl(file: File): Promise<string> {
         resolve(reader.result);
         return;
       }
-      reject(new Error('无法读取本地图片'));
+      reject(new Error('Failed to read local image'));
     };
-    reader.onerror = () => reject(reader.error ?? new Error('无法读取本地图片'));
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read local image'));
     reader.readAsDataURL(file);
   });
 }
@@ -23,7 +23,7 @@ function readImageSize(src: string): Promise<{ width: number; height: number }> 
     image.onload = () => {
       resolve({ width: image.width, height: image.height });
     };
-    image.onerror = () => reject(new Error('无法解析图片尺寸'));
+    image.onerror = () => reject(new Error('Failed to parse image dimensions'));
     image.src = src;
   });
 }

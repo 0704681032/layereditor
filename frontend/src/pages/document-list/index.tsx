@@ -1,8 +1,9 @@
 import { type ChangeEvent, type FC, useEffect, useRef, useState } from 'react';
-import { Button, Card, Typography, App, Empty, Spin, Modal, Input, InputNumber, Popconfirm, Checkbox, Select, Space, Tag } from 'antd';
+import { Button, Card, Typography, App, Empty, Spin, Modal, Input, InputNumber, Popconfirm, Checkbox, Select, Space, Tag, Pagination } from 'antd';
 import { PlusOutlined, EditOutlined, UploadOutlined, DeleteOutlined, FormOutlined, FileImageOutlined, AppstoreOutlined, LayoutOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { listDocuments, createDocument, importDocumentFromFile, updateDocumentTitle, deleteDocument, deleteDocuments } from '@/features/editor/api/document';
+import type { DocumentListResponse } from '@/features/editor/api/document';
 import type { EditorLayer } from '@/features/editor/types';
 
 const { Title, Text } = Typography;
@@ -435,6 +436,9 @@ export const DocumentListPage: FC = () => {
   const { message } = App.useApp();
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -450,13 +454,25 @@ export const DocumentListPage: FC = () => {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
 
-  const fetchDocuments = async () => {
-    try { setLoading(true); setDocuments(await listDocuments()); }
-    catch (e: any) { message.error(e.message || 'Failed to load documents'); }
+  const fetchDocuments = async (pageNum = page, sizeNum = pageSize) => {
+    try {
+      setLoading(true);
+      const res: DocumentListResponse = await listDocuments(pageNum, sizeNum);
+      setDocuments(res.items);
+      setTotal(res.total);
+      setPage(res.page);
+      setPageSize(res.size);
+    } catch (e: any) { message.error(e.message || 'Failed to load documents'); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchDocuments(); }, []);
+  useEffect(() => { fetchDocuments(0, pageSize); }, []);
+
+  const handlePageChange = (newPage: number, newSize: number) => {
+    setPage(newPage);
+    setPageSize(newSize);
+    fetchDocuments(newPage, newSize);
+  };
 
   const handleCreate = async () => {
     try {
@@ -513,14 +529,14 @@ export const DocumentListPage: FC = () => {
 
   const handleSaveTitle = async () => {
     if (!editingDoc || !editTitle.trim()) return;
-    try { setSaving(true); await updateDocumentTitle(editingDoc.id, editTitle.trim()); message.success('Title updated'); setEditModalOpen(false); fetchDocuments(); }
+    try { setSaving(true); await updateDocumentTitle(editingDoc.id, editTitle.trim()); message.success('Title updated'); setEditModalOpen(false); fetchDocuments(page, pageSize); }
     catch (e: any) { message.error(e.message || 'Update failed'); }
     finally { setSaving(false); }
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await deleteDocument(id); message.success('Deleted'); setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; }); fetchDocuments(); }
+    try { await deleteDocument(id); message.success('Deleted'); setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next; }); fetchDocuments(page, pageSize); }
     catch (e: any) { message.error(e.message || 'Delete failed'); }
   };
 
@@ -534,7 +550,7 @@ export const DocumentListPage: FC = () => {
 
   const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return;
-    try { await deleteDocuments(Array.from(selectedIds)); message.success(`Deleted ${selectedIds.size} documents`); setSelectedIds(new Set()); fetchDocuments(); }
+    try { await deleteDocuments(Array.from(selectedIds)); message.success(`Deleted ${selectedIds.size} documents`); setSelectedIds(new Set()); fetchDocuments(page, pageSize); }
     catch (e: any) { message.error(e.message || 'Batch delete failed'); }
   };
 
@@ -619,9 +635,10 @@ export const DocumentListPage: FC = () => {
           <>
             {documents.length > 0 && (
               <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Checkbox checked={selectedIds.size === documents.length} indeterminate={selectedIds.size > 0 && selectedIds.size < documents.length} onChange={(e) => toggleAll(e.target.checked)}>
-                  <Text type="secondary" style={{ fontSize: 13 }}>Select all ({documents.length})</Text>
+                <Checkbox checked={selectedIds.size === documents.length && documents.length > 0} indeterminate={selectedIds.size > 0 && selectedIds.size < documents.length} onChange={(e) => toggleAll(e.target.checked)}>
+                  <Text type="secondary" style={{ fontSize: 13 }}>Select all on page ({documents.length})</Text>
                 </Checkbox>
+                <Text type="secondary" style={{ fontSize: 13 }}>| Total: {total}</Text>
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 20 }}>
@@ -706,6 +723,19 @@ export const DocumentListPage: FC = () => {
                 );
               })}
             </div>
+            {total > pageSize && (
+              <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
+                <Pagination
+                  current={page + 1}
+                  pageSize={pageSize}
+                  total={total}
+                  onChange={(p, s) => handlePageChange(p - 1, s)}
+                  showSizeChanger
+                  pageSizeOptions={['10', '20', '50', '100']}
+                  showTotal={(t, range) => `${range[0]}-${range[1]} of ${t} documents`}
+                />
+              </div>
+            )}
           </>
         )}
 

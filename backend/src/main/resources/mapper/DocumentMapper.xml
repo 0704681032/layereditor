@@ -16,6 +16,18 @@
         FROM editor_document
         WHERE owner_id = #{ownerId} AND deleted_at IS NULL
         ORDER BY updated_at DESC
+        <if test="limit != null">
+            LIMIT #{limit}
+        </if>
+        <if test="offset != null">
+            OFFSET #{offset}
+        </if>
+    </select>
+
+    <select id="countByOwner" resultType="long">
+        SELECT COUNT(*)
+        FROM editor_document
+        WHERE owner_id = #{ownerId} AND deleted_at IS NULL
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">

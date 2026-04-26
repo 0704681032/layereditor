@@ -90,8 +90,29 @@ public class DocumentService {
         return toDetailResponse(doc);
     }
 
+    /**
+     * List documents with pagination
+     */
+    public DocumentListResponse listDocuments(int page, int size) {
+        int offset = page * size;
+        List<EditorDocument> docs = documentMapper.selectPageByOwner(DEFAULT_USER_ID, offset, size);
+        long total = documentMapper.countByOwner(DEFAULT_USER_ID);
+        List<DocumentListItemResponse> items = docs.stream()
+                .map(d -> new DocumentListItemResponse(
+                        d.getId(), d.getTitle(), d.getStatus(),
+                        d.getCurrentVersion(), d.getCreatedAt(), d.getUpdatedAt(),
+                        parseContentSummary(d.getContent())))
+                .toList();
+        return new DocumentListResponse(items, total, page, size);
+    }
+
+    /**
+     * Legacy method for backward compatibility (returns all documents)
+     * @deprecated Use listDocuments(int page, int size) instead
+     */
+    @Deprecated
     public List<DocumentListItemResponse> listDocuments() {
-        return documentMapper.selectPageByOwner(DEFAULT_USER_ID).stream()
+        return documentMapper.selectPageByOwner(DEFAULT_USER_ID, null, null).stream()
                 .map(d -> new DocumentListItemResponse(
                         d.getId(), d.getTitle(), d.getStatus(),
                         d.getCurrentVersion(), d.getCreatedAt(), d.getUpdatedAt(),
