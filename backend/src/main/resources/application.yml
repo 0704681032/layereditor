@@ -28,3 +28,7 @@ app:
   auth:
     username: ${APP_AUTH_USERNAME:editor}
     password: ${APP_AUTH_PASSWORD:editor}
+  volcengine:
+    access-key: ${VOLC_ACCESS_KEY:}
+    secret-key: ${VOLC_SECRET_KEY:}
+    endpoint: ${VOLC_ENDPOINT:https://visual.volcengineapi.com}
