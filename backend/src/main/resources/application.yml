@@ -15,6 +15,17 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+  # OpenFeign 配置
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connectTimeout: 5000
+            readTimeout: 10000
+          volcengine-visual:
+            connectTimeout: 5000
+            readTimeout: 60000  # AI处理可能需要较长时间
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml

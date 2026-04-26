@@ -65,7 +65,7 @@ export async function mattingImage(
 /**
  * Image matting from URL - alternative method using image URL
  *
- * @param imageUrl - URL of the image to process
+ * @param imageUrl - URL of the image to process (must be public URL, not private network)
  * @param type - 'human' for human body matting, 'general' for general objects
  * @returns Processed image with transparent background
  */
@@ -73,11 +73,58 @@ export async function mattingImageFromUrl(
   imageUrl: string,
   type: 'human' | 'general' = 'general'
 ): Promise<AiImageResponse> {
+  // Validate URL for SSRF protection
+  validateImageUrl(imageUrl);
+
   // First fetch image as base64
   const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from URL: ${response.status} ${response.statusText}`);
+  }
   const blob = await response.blob();
   const base64 = await blobToBase64(blob);
   return mattingImage(base64, type);
+}
+
+/**
+ * Validate image URL for SSRF protection
+ * Blocks access to private network addresses
+ */
+function validateImageUrl(url: string): void {
+  if (!url) {
+    throw new Error('imageUrl is required');
+  }
+
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    throw new Error('imageUrl must be HTTP or HTTPS protocol');
+  }
+
+  // Extract host from URL
+  const afterProtocol = url.replace('https://', '').replace('http://', '');
+  const slashIndex = afterProtocol.indexOf('/');
+  const colonIndex = afterProtocol.indexOf(':');
+  const endIndex = Math.min(
+    slashIndex >= 0 ? slashIndex : afterProtocol.length,
+    colonIndex >= 0 ? colonIndex : afterProtocol.length
+  );
+  const host = afterProtocol.substring(0, endIndex).toLowerCase();
+
+  // Blocked patterns for private networks
+  const blockedPatterns = [
+    'localhost', '127.0.0.1', '0.0.0.0',
+    '10.', '192.168.',
+    '172.16.', '172.17.', '172.18.', '172.19.',
+    '172.20.', '172.21.', '172.22.', '172.23.',
+    '172.24.', '172.25.', '172.26.', '172.27.',
+    '172.28.', '172.29.', '172.30.', '172.31.',
+    '::1', '0:0:0:0:0:0:0:1', 'fc00:', 'fd00:'
+  ];
+
+  for (const blocked of blockedPatterns) {
+    if (host === blocked || host.startsWith(blocked)) {
+      throw new Error('Access to private network URLs is not allowed');
+    }
+  }
 }
 
 /**

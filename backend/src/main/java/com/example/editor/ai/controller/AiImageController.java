@@ -23,6 +23,11 @@ public class AiImageController {
     private final AiImageService aiImageService;
 
     /**
+     * Maximum image data size: 10MB (Base64 encoded ~13.3MB chars)
+     */
+    private static final int MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
+    /**
      * Check AI API status - whether Volcengine credentials are configured
      */
     @GetMapping("/status")
@@ -38,31 +43,15 @@ public class AiImageController {
      */
     @PostMapping("/matting")
     public ApiResponse<AiImageResponse> matting(@RequestBody MattingRequest request) {
-        log.info("Matting request received, type: {}", request.getType());
+        log.info("Matting request received, type: {}, dataSize: {} chars",
+            request.getType(), request.getImageData() != null ? request.getImageData().length() : 0);
 
-        // Extract base64 data from request
-        String imageData = request.getImageData();
-        if (imageData == null || imageData.isEmpty()) {
-            throw new IllegalArgumentException("imageData is required");
-        }
+        validateAndDecodeImage(request.getImageData());
 
-        // Remove data:image prefix if present
-        String base64Data = imageData;
-        if (base64Data.contains(",")) {
-            base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
-        }
+        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
+        byte[] result = aiImageService.matting(imageBytes, request.getType());
 
-        byte[] imageBytes = Base64.getDecoder().decode(base64Data);
-        byte[] result = aiImageService.matting(imageBytes);
-
-        String base64Result = Base64.getEncoder().encodeToString(result);
-        AiImageResponse response = new AiImageResponse();
-        response.setImageData("data:image/png;base64," + base64Result);
-        response.setWidth(request.getWidth());
-        response.setHeight(request.getHeight());
-
-        log.info("Matting completed successfully");
-        return ApiResponse.ok(response);
+        return buildSuccessResponse(result, request.getWidth(), request.getHeight());
     }
 
     /**
@@ -72,28 +61,16 @@ public class AiImageController {
      */
     @PostMapping("/outpainting")
     public ApiResponse<AiImageResponse> outpainting(@RequestBody OutpaintingRequest request) {
-        log.info("Outpainting request received, direction: {}, pixels: {}", request.getDirection(), request.getPixels());
+        log.info("Outpainting request received, direction: {}, pixels: {}, dataSize: {} chars",
+            request.getDirection(), request.getPixels(),
+            request.getImageData() != null ? request.getImageData().length() : 0);
 
-        String imageData = request.getImageData();
-        if (imageData == null || imageData.isEmpty()) {
-            throw new IllegalArgumentException("imageData is required");
-        }
+        validateAndDecodeImage(request.getImageData());
 
-        // Remove data:image prefix if present
-        String base64Data = imageData;
-        if (base64Data.contains(",")) {
-            base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
-        }
-
-        byte[] imageBytes = Base64.getDecoder().decode(base64Data);
+        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
         byte[] result = aiImageService.outpainting(imageBytes, request.getDirection(), request.getPixels());
 
-        String base64Result = Base64.getEncoder().encodeToString(result);
-        AiImageResponse response = new AiImageResponse();
-        response.setImageData("data:image/png;base64," + base64Result);
-
-        log.info("Outpainting completed successfully");
-        return ApiResponse.ok(response);
+        return buildSuccessResponse(result, null, null);
     }
 
     /**
@@ -103,37 +80,18 @@ public class AiImageController {
      */
     @PostMapping("/inpainting")
     public ApiResponse<AiImageResponse> inpainting(@RequestBody InpaintingRequest request) {
-        log.info("Inpainting request received");
+        log.info("Inpainting request received, imageSize: {} chars, maskSize: {} chars",
+            request.getImageData() != null ? request.getImageData().length() : 0,
+            request.getMaskData() != null ? request.getMaskData().length() : 0);
 
-        String imageData = request.getImageData();
-        String maskData = request.getMaskData();
-        if (imageData == null || imageData.isEmpty()) {
-            throw new IllegalArgumentException("imageData is required");
-        }
-        if (maskData == null || maskData.isEmpty()) {
-            throw new IllegalArgumentException("maskData is required");
-        }
+        validateAndDecodeImage(request.getImageData());
+        validateAndDecodeImage(request.getMaskData());
 
-        // Remove data:image prefix if present
-        String base64Image = imageData;
-        if (base64Image.contains(",")) {
-            base64Image = base64Image.substring(base64Image.indexOf(",") + 1);
-        }
-        String base64Mask = maskData;
-        if (base64Mask.contains(",")) {
-            base64Mask = base64Mask.substring(base64Mask.indexOf(",") + 1);
-        }
-
-        byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-        byte[] maskBytes = Base64.getDecoder().decode(base64Mask);
+        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
+        byte[] maskBytes = extractAndDecodeBase64(request.getMaskData());
         byte[] result = aiImageService.inpainting(imageBytes, maskBytes);
 
-        String base64Result = Base64.getEncoder().encodeToString(result);
-        AiImageResponse response = new AiImageResponse();
-        response.setImageData("data:image/png;base64," + base64Result);
-
-        log.info("Inpainting completed successfully");
-        return ApiResponse.ok(response);
+        return buildSuccessResponse(result, null, null);
     }
 
     /**
@@ -143,32 +101,64 @@ public class AiImageController {
      */
     @PostMapping("/super-resolution")
     public ApiResponse<AiImageResponse> superResolution(@RequestBody SuperResolutionRequest request) {
-        log.info("Super Resolution request received, scale: {}", request.getScale());
+        log.info("Super Resolution request received, scale: {}, dataSize: {} chars",
+            request.getScale(), request.getImageData() != null ? request.getImageData().length() : 0);
 
-        String imageData = request.getImageData();
+        validateAndDecodeImage(request.getImageData());
+
+        int scale = validateScale(request.getScale());
+
+        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
+        byte[] result = aiImageService.superResolution(imageBytes, scale);
+
+        return buildSuccessResponse(result, null, null);
+    }
+
+    /**
+     * Validate image data is present and within size limit
+     */
+    private void validateAndDecodeImage(String imageData) {
         if (imageData == null || imageData.isEmpty()) {
             throw new IllegalArgumentException("imageData is required");
         }
-
-        // Remove data:image prefix if present
-        String base64Image = imageData;
-        if (base64Image.contains(",")) {
-            base64Image = base64Image.substring(base64Image.indexOf(",") + 1);
+        if (imageData.length() > MAX_IMAGE_SIZE) {
+            throw new IllegalArgumentException("Image data too large (max 10MB)");
         }
+    }
 
-        int scale = request.getScale() != null ? request.getScale() : 2;
+    /**
+     * Extract base64 data from data:image prefix if present, then decode
+     */
+    private byte[] extractAndDecodeBase64(String imageData) {
+        String base64Data = imageData;
+        if (base64Data.contains(",")) {
+            base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
+        }
+        return Base64.getDecoder().decode(base64Data);
+    }
+
+    /**
+     * Validate scale parameter
+     */
+    private int validateScale(Integer scale) {
+        if (scale == null) return 2;
         if (scale != 2 && scale != 4) {
-            scale = 2; // Default to 2x if invalid scale
+            log.warn("Invalid scale value {}, using default 2", scale);
+            return 2;
         }
+        return scale;
+    }
 
-        byte[] imageBytes = Base64.getDecoder().decode(base64Image);
-        byte[] result = aiImageService.superResolution(imageBytes, scale);
-
+    /**
+     * Build success response with base64 result
+     */
+    private ApiResponse<AiImageResponse> buildSuccessResponse(byte[] result, Integer width, Integer height) {
         String base64Result = Base64.getEncoder().encodeToString(result);
         AiImageResponse response = new AiImageResponse();
         response.setImageData("data:image/png;base64," + base64Result);
-
-        log.info("Super Resolution completed successfully");
+        response.setWidth(width);
+        response.setHeight(height);
+        log.info("AI operation completed successfully, resultSize: {} bytes", result.length);
         return ApiResponse.ok(response);
     }
 }

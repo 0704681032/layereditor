@@ -652,10 +652,14 @@ const AIImageTools: FC<{ layer: ImageLayer; onUpdate: (field: string, value: unk
   // Fetch image as base64 helper
   const fetchImageAsBase64 = useCallback(async (src: string): Promise<string> => {
     const response = await fetch(src);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
     const blob = await response.blob();
-    return new Promise<string>((resolve) => {
+    return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read image as base64'));
       reader.readAsDataURL(blob);
     });
   }, []);
