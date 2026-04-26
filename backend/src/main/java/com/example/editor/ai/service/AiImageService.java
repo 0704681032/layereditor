@@ -1,10 +1,10 @@
 package com.example.editor.ai.service;
 
 import com.example.editor.ai.client.VolcengineVisualClient;
+import com.example.editor.ai.config.VolcengineProperties;
 import com.example.editor.ai.dto.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Base64;
@@ -27,14 +27,7 @@ import java.util.Set;
 public class AiImageService {
 
     private final VolcengineVisualClient volcengineClient;
-
-    @Value("${app.volcengine.access-key:}")
-    private String accessKey;
-
-    @Value("${app.volcengine.secret-key:}")
-    private String secretKey;
-
-    private static final String API_VERSION = "2022-08-31";
+    private final VolcengineProperties properties;
 
     /**
      * Blocked URL patterns for SSRF protection
@@ -51,7 +44,7 @@ public class AiImageService {
      * Check if API credentials are configured
      */
     private void checkCredentials() {
-        if (accessKey == null || accessKey.isEmpty() || secretKey == null || secretKey.isEmpty()) {
+        if (!properties.isConfigured()) {
             throw new IllegalStateException(
                 "Volcengine API credentials not configured. " +
                 "Please set VOLC_ACCESS_KEY and VOLC_SECRET_KEY environment variables.");
@@ -62,8 +55,7 @@ public class AiImageService {
      * Get AI API status - check if credentials are configured
      */
     public AiStatusResponse getStatus() {
-        boolean configured = accessKey != null && !accessKey.isEmpty()
-            && secretKey != null && !secretKey.isEmpty();
+        boolean configured = properties.isConfigured();
 
         String[] features = configured
             ? new String[]{"matting", "outpainting", "inpainting", "super-resolution"}
@@ -96,7 +88,7 @@ public class AiImageService {
                 .imageBase64(base64Image)
                 .build();
 
-            VolcengineResponse response = volcengineClient.matting(action, API_VERSION, request);
+            VolcengineResponse response = volcengineClient.matting(action, properties.getVersion(), request);
 
             validateResponse(response, "Matting");
             return decodeResultImage(response);
@@ -129,7 +121,7 @@ public class AiImageService {
                 .imageUrl(imageUrl)
                 .build();
 
-            VolcengineResponse response = volcengineClient.matting(action, API_VERSION, request);
+            VolcengineResponse response = volcengineClient.matting(action, properties.getVersion(), request);
 
             validateResponse(response, "Matting");
             return decodeResultImage(response);
@@ -164,7 +156,7 @@ public class AiImageService {
                 .expandRight(direction.equals("right") || direction.equals("all") ? String.valueOf(pixels) : "0")
                 .build();
 
-            VolcengineResponse response = volcengineClient.outpainting("ImageOutpainting", API_VERSION, request);
+            VolcengineResponse response = volcengineClient.outpainting("ImageOutpainting", properties.getVersion(), request);
 
             validateResponse(response, "Outpainting");
             return decodeResultImage(response);
@@ -196,7 +188,7 @@ public class AiImageService {
                 .maskBase64(base64Mask)
                 .build();
 
-            VolcengineResponse response = volcengineClient.inpainting("ImageInpainting", API_VERSION, request);
+            VolcengineResponse response = volcengineClient.inpainting("ImageInpainting", properties.getVersion(), request);
 
             validateResponse(response, "Inpainting");
             return decodeResultImage(response);
@@ -227,7 +219,7 @@ public class AiImageService {
                 .scale(String.valueOf(scale))
                 .build();
 
-            VolcengineResponse response = volcengineClient.superResolution("ImageSuperResolution", API_VERSION, request);
+            VolcengineResponse response = volcengineClient.superResolution("ImageSuperResolution", properties.getVersion(), request);
 
             validateResponse(response, "Super Resolution");
             return decodeResultImage(response);

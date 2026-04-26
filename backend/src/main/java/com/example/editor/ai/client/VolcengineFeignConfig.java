@@ -1,9 +1,10 @@
 package com.example.editor.ai.client;
 
+import com.example.editor.ai.config.VolcengineProperties;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -23,46 +24,36 @@ import java.util.Map;
  */
 @Configuration
 @Slf4j
+@RequiredArgsConstructor
 public class VolcengineFeignConfig {
 
-    @Value("${app.volcengine.access-key:}")
-    private String accessKey;
-
-    @Value("${app.volcengine.secret-key:}")
-    private String secretKey;
-
-    @Value("${app.volcengine.endpoint:https://visual.volcengineapi.com}")
-    private String endpoint;
-
-    private static final String SERVICE = "cv";
-    private static final String REGION = "cn-north-1";
+    private final VolcengineProperties properties;
 
     @Bean
     public RequestInterceptor volcengineSignatureInterceptor() {
-        return new VolcengineSignatureInterceptor(accessKey, secretKey, endpoint);
+        return new VolcengineSignatureInterceptor(properties);
     }
 
     /**
      * Request interceptor that adds Volcengine signature headers
      */
+    @RequiredArgsConstructor
     public static class VolcengineSignatureInterceptor implements RequestInterceptor {
 
-        private final String accessKey;
-        private final String secretKey;
-        private final String host;
-
-        public VolcengineSignatureInterceptor(String accessKey, String secretKey, String endpoint) {
-            this.accessKey = accessKey;
-            this.secretKey = secretKey;
-            this.host = endpoint.replace("https://", "").replace("http://", "");
-        }
+        private final VolcengineProperties properties;
 
         @Override
         public void apply(RequestTemplate template) {
-            if (accessKey == null || accessKey.isEmpty() || secretKey == null || secretKey.isEmpty()) {
+            if (!properties.isConfigured()) {
                 log.warn("Volcengine API credentials not configured");
                 return;
             }
+
+            String accessKey = properties.getAccessKey();
+            String secretKey = properties.getSecretKey();
+            String host = properties.getEndpoint().replace("https://", "").replace("http://", "");
+            String service = properties.getService();
+            String region = properties.getRegion();
 
             // Get current timestamp
             String now = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
@@ -89,13 +80,13 @@ public class VolcengineFeignConfig {
 
             // Build string to sign
             String algorithm = "HMAC-SHA256";
-            String credentialScope = now.substring(0, 8) + "/" + REGION + "/" + SERVICE + "/request";
+            String credentialScope = now.substring(0, 8) + "/" + region + "/" + service + "/request";
             String stringToSign = algorithm + "\n" + now + "\n" + credentialScope + "\n" + sha256Hex(canonicalRequest.getBytes(StandardCharsets.UTF_8));
 
             // Calculate signature
             byte[] kDate = hmacSha256(secretKey.getBytes(StandardCharsets.UTF_8), now.substring(0, 8));
-            byte[] kRegion = hmacSha256(kDate, REGION);
-            byte[] kService = hmacSha256(kRegion, SERVICE);
+            byte[] kRegion = hmacSha256(kDate, region);
+            byte[] kService = hmacSha256(kRegion, service);
             byte[] kSigning = hmacSha256(kService, "request");
             String signature = hex(hmacSha256(kSigning, stringToSign));
 

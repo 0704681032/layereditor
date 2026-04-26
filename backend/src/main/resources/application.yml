@@ -67,3 +67,6 @@ app:
     access-key: ${VOLC_ACCESS_KEY:}
     secret-key: ${VOLC_SECRET_KEY:}
     endpoint: ${VOLC_ENDPOINT:https://visual.volcengineapi.com}
+    service: cv
+    region: cn-north-1
+    version: 2022-08-31
