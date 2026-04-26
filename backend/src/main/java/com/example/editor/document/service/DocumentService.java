@@ -1,7 +1,9 @@
 package com.example.editor.document.service;
 
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.example.editor.asset.dto.AssetResponse;
 import com.example.editor.asset.service.AssetService;
 import com.example.editor.common.exception.ConflictException;
@@ -33,6 +35,7 @@ public class DocumentService {
     private final DocumentMapper documentMapper;
     private final AssetMapper assetMapper;
     private final AssetService assetService;
+    private final ObjectMapper objectMapper;
 
     private static final Long DEFAULT_USER_ID = 1L;
     private static final int DEFAULT_CANVAS_WIDTH = 1200;
@@ -41,14 +44,14 @@ public class DocumentService {
 
     @Transactional
     public DocumentDetailResponse create(CreateDocumentRequest request) {
-        JSONObject sanitized = (JSONObject) ContentValidator.validateAndSanitize(request.content());
+        JsonNode sanitized = ContentValidator.validateAndSanitize(request.content());
         EditorDocument doc = new EditorDocument();
         doc.setOwnerId(DEFAULT_USER_ID);
         doc.setTitle(request.title().trim());
         doc.setStatus("draft");
         doc.setSchemaVersion(request.schemaVersion());
         doc.setCurrentVersion(1);
-        doc.setContent(sanitized.toJSONString());
+        doc.setContent(sanitized.toString());
         documentMapper.insert(doc);
         return getDetail(doc.getId());
     }
@@ -60,7 +63,7 @@ public class DocumentService {
                 : title.trim();
         boolean isSvg = isSvgFile(file);
         AssetResponse asset = assetService.upload(file, null, isSvg ? "svg" : "image");
-        JSONObject content;
+        ObjectNode content;
         if (isSvg) {
             content = buildSvgDocumentContent(file, resolvedTitle);
         } else {
@@ -73,7 +76,7 @@ public class DocumentService {
         doc.setStatus("draft");
         doc.setSchemaVersion(1);
         doc.setCurrentVersion(1);
-        doc.setContent(content.toJSONString());
+        doc.setContent(content.toString());
         documentMapper.insert(doc);
 
         // Link asset to the newly created document
@@ -99,19 +102,19 @@ public class DocumentService {
     private DocumentListItemResponse.ContentSummary parseContentSummary(String contentJson) {
         if (contentJson == null || contentJson.isBlank()) return null;
         try {
-            JSONObject root = JSONObject.parseObject(contentJson);
-            JSONObject canvas = root.getJSONObject("canvas");
+            JsonNode root = objectMapper.readTree(contentJson);
+            JsonNode canvas = root.get("canvas");
             DocumentListItemResponse.Canvas canvasSummary = null;
             if (canvas != null) {
                 canvasSummary = new DocumentListItemResponse.Canvas(
-                    canvas.getInteger("width"),
-                    canvas.getInteger("height"),
-                    canvas.getString("background")
+                    canvas.get("width").asInt(),
+                    canvas.get("height").asInt(),
+                    canvas.has("background") ? canvas.get("background").asText() : null
                 );
             }
-            JSONArray layers = root.getJSONArray("layers");
-            int layerCount = layers != null ? layers.size() : 0;
-            String thumbnail = root.getString("thumbnail");
+            JsonNode layers = root.get("layers");
+            int layerCount = layers != null && layers.isArray() ? layers.size() : 0;
+            String thumbnail = root.has("thumbnail") ? root.get("thumbnail").asText() : null;
             return new DocumentListItemResponse.ContentSummary(canvasSummary, layerCount, thumbnail);
         } catch (Exception e) {
             return null;
@@ -129,11 +132,11 @@ public class DocumentService {
         }
 
         // Validate and sanitize content
-        JSONObject sanitized = (JSONObject) ContentValidator.validateAndSanitize(request.content());
+        JsonNode sanitized = ContentValidator.validateAndSanitize(request.content());
 
         int updated = documentMapper.updateDocument(
                 id, DEFAULT_USER_ID, request.title().trim(),
-                request.schemaVersion(), sanitized.toJSONString(), request.currentVersion());
+                request.schemaVersion(), sanitized.toString(), request.currentVersion());
         if (updated == 0) {
             throw new ConflictException("document version conflict");
         }
@@ -178,19 +181,24 @@ public class DocumentService {
     }
 
     private DocumentDetailResponse toDetailResponse(EditorDocument doc) {
-        JSONObject contentNode = JSONObject.parseObject(doc.getContent());
+        JsonNode contentNode;
+        try {
+            contentNode = objectMapper.readTree(doc.getContent());
+        } catch (Exception e) {
+            contentNode = objectMapper.createObjectNode();
+        }
         return new DocumentDetailResponse(
                 doc.getId(), doc.getTitle(), doc.getSchemaVersion(),
                 doc.getCurrentVersion(), contentNode, doc.getCreatedAt(), doc.getUpdatedAt());
     }
 
-    private JSONObject buildSvgDocumentContent(MultipartFile file, String title) {
+    private ObjectNode buildSvgDocumentContent(MultipartFile file, String title) {
         try {
             String rawSvg = new String(file.getBytes(), StandardCharsets.UTF_8);
             String svgData = SvgSanitizer.sanitize(rawSvg);
             SvgSize size = extractSvgSize(svgData);
-            JSONObject content = createContentRoot(size.width(), size.height());
-            JSONArray layers = content.getJSONArray("layers");
+            ObjectNode content = createContentRoot(size.width(), size.height());
+            ArrayNode layers = (ArrayNode) content.get("layers");
             layers.add(svgLayer(title, 0, 0, size.width(), size.height(), svgData));
             return content;
         } catch (IllegalArgumentException e) {
@@ -200,45 +208,45 @@ public class DocumentService {
         }
     }
 
-    private JSONObject buildImageDocumentContent(MultipartFile file, AssetResponse asset) {
+    private ObjectNode buildImageDocumentContent(MultipartFile file, AssetResponse asset) {
         int width = asset.width() != null ? asset.width() : DEFAULT_CANVAS_WIDTH;
         int height = asset.height() != null ? asset.height() : DEFAULT_CANVAS_HEIGHT;
-        JSONObject content = createContentRoot(width, height);
-        JSONArray layers = content.getJSONArray("layers");
+        ObjectNode content = createContentRoot(width, height);
+        ArrayNode layers = (ArrayNode) content.get("layers");
         layers.add(imageLayer(deriveTitle(file.getOriginalFilename()), asset.id(), width, height));
         return content;
     }
 
-    private JSONObject createContentRoot(int width, int height) {
-        JSONObject content = new JSONObject();
+    private ObjectNode createContentRoot(int width, int height) {
+        ObjectNode content = objectMapper.createObjectNode();
         content.put("schemaVersion", 1);
-        JSONObject canvas = new JSONObject();
+        ObjectNode canvas = objectMapper.createObjectNode();
         canvas.put("width", width);
         canvas.put("height", height);
         canvas.put("background", "#FFFFFF");
-        content.put("canvas", canvas);
-        content.put("layers", new JSONArray());
+        content.set("canvas", canvas);
+        content.set("layers", objectMapper.createArrayNode());
         return content;
     }
 
-    private JSONObject imageLayer(String name, Long assetId, int width, int height) {
-        JSONObject layer = baseLayer("image", name, 0, 0);
+    private ObjectNode imageLayer(String name, Long assetId, int width, int height) {
+        ObjectNode layer = baseLayer("image", name, 0, 0);
         layer.put("width", width);
         layer.put("height", height);
         layer.put("assetId", assetId);
         return layer;
     }
 
-    private JSONObject svgLayer(String name, int x, int y, int width, int height, String svgData) {
-        JSONObject layer = baseLayer("svg", name, x, y);
+    private ObjectNode svgLayer(String name, int x, int y, int width, int height, String svgData) {
+        ObjectNode layer = baseLayer("svg", name, x, y);
         layer.put("width", width);
         layer.put("height", height);
         layer.put("svgData", svgData);
         return layer;
     }
 
-    private JSONObject baseLayer(String type, String name, int x, int y) {
-        JSONObject layer = new JSONObject();
+    private ObjectNode baseLayer(String type, String name, int x, int y) {
+        ObjectNode layer = objectMapper.createObjectNode();
         layer.put("id", generateLayerId());
         layer.put("type", type);
         layer.put("name", name);

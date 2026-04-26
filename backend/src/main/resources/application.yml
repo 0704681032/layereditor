@@ -4,12 +4,13 @@ server:
 spring:
   # 数据库配置由 profile 提供: application-mac.yml 或 application-windows.yml
   profiles:
-    active: ${SPRING_PROFILE:mac}
+    active: ${SPRING_PROFILE:windows}
   flyway:
     enabled: true
     locations: classpath:db/migration
     placeholders:
       default_user_password_hash: ${APP_DEFAULT_PASSWORD_HASH:$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy}
+      defaultUserPasswordHash: ${APP_DEFAULT_PASSWORD_HASH:$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy}
   servlet:
     multipart:
       max-file-size: 50MB

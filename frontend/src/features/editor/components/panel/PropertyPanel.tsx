@@ -475,8 +475,8 @@ const TextProperties: FC<{
           options={fontOptions}
           showSearch
           filterOption={(input, option) =>
-            (option?.value as string)?.toLowerCase().includes(input.toLowerCase()) ||
-            (option?.label as any)?.props?.children?.toLowerCase().includes(input.toLowerCase())
+            ((option as any)?.value as string)?.toLowerCase().includes(input.toLowerCase()) ||
+            ((option as any)?.label as any)?.props?.children?.toLowerCase().includes(input.toLowerCase())
           } />
       </Row>
 

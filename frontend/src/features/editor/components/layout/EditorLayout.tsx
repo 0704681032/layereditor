@@ -1,6 +1,6 @@
 import { SvgShapePicker } from '../picker/SvgShapePicker';
 import { useCallback, useMemo, useRef, useState, type ChangeEvent, type FC } from 'react';
-import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, App, Dropdown, Modal, Radio, Slider, Alert } from 'antd';
+import { Button, Space, Tooltip, Popover, Card, Typography, Tag, Divider, App, Dropdown, Modal, Radio, Slider, Alert, Spin } from 'antd';
 import {
   PlusSquareOutlined,
   FontSizeOutlined,
@@ -51,7 +51,7 @@ import { useAutoSave } from '../../hooks/useAutoSave';
 import { useExportImage } from '../../hooks/useExportImage';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { undo, redo } from '../../store/history';
-import { createLayerFromLocalImage } from '../../utils/localImageImport';
+import { parseDesignFile, detectFileType, getFileTypeName } from '../../utils/fileParser';
 import { AssetPicker } from '../picker/AssetPicker';
 import { useShallow } from 'zustand/react/shallow';
 import { findLayerById } from '../../utils/layerTreeOperations';
@@ -81,35 +81,76 @@ const ToolBtn: FC<{ icon: React.ReactNode; title: string; onClick?: () => void; 
 const Sep = () => <div style={{ width: 1, height: 20, background: 'var(--divider)', margin: '0 6px', flexShrink: 0 }} />;
 
 const LocalImagePicker: FC = () => {
-  const { content, addLayer, selectLayers } = useEditorStore(useShallow((s) => ({ content: s.content, addLayer: s.addLayer, selectLayers: s.selectLayers })));
+  const { content, addLayersBatch, selectLayers } = useEditorStore(useShallow((s) => ({ content: s.content, addLayersBatch: s.addLayersBatch, selectLayers: s.selectLayers })));
   const inputRef = useRef<HTMLInputElement>(null);
+  const { message } = App.useApp();
+  const [importing, setImporting] = useState(false);
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (!content || !file) return;
-      try {
-        const parsed = await createLayerFromLocalImage(file, content.canvas);
-        addLayer(parsed.layer);
-        selectLayers(parsed.selectedLayerIds);
-      } catch (error) {
-        console.error('Failed to parse local image:', error);
-        message.error(error instanceof Error ? error.message : 'Failed to import image');
-      } finally { event.target.value = ''; }
+      const files = Array.from(event.target.files || []);
+      if (!content || files.length === 0) return;
+
+      setImporting(true);
+      const allLayers: EditorLayer[] = [];
+      const allSelectedIds: string[] = [];
+      let hasError = false;
+
+      for (const file of files) {
+        try {
+          const fileType = detectFileType(file);
+          message.loading({ content: `Importing ${getFileTypeName(fileType)}: ${file.name}`, key: file.name, duration: 0 });
+
+          const parsed = await parseDesignFile(file, content.canvas);
+
+          if (parsed.layers.length > 0) {
+            allLayers.push(...parsed.layers);
+            allSelectedIds.push(...parsed.selectedLayerIds);
+          }
+
+          message.destroy(file.name);
+        } catch (error) {
+          hasError = true;
+          message.destroy(file.name);
+          message.error(`Failed to import ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      if (allLayers.length > 0) {
+        addLayersBatch(allLayers);
+        selectLayers(allSelectedIds.length > 0 ? allSelectedIds : [allLayers[0].id]);
+        message.success(`Imported ${allLayers.length} layer(s) from ${files.length - (hasError ? 1 : 0)} file(s)`);
+      }
+
+      setImporting(false);
+      event.target.value = '';
     },
-    [content, addLayer, selectLayers]
+    [content, addLayersBatch, selectLayers]
   );
 
   return (
     <>
-      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" style={{ display: 'none' }} onChange={handleFileChange} />
-      <ToolBtn icon={<PictureOutlined />} title="Import Image" onClick={() => inputRef.current?.click()} />
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.svg,.sketch"
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+      />
+      <ToolBtn
+        icon={importing ? <Spin size="small" /> : <PictureOutlined />}
+        title="Import Image/SVG/Sketch"
+        onClick={() => inputRef.current?.click()}
+        disabled={importing}
+      />
     </>
   );
 };
 
 // Export Dialog
 const ExportDialog: FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
+  const { message } = App.useApp();
   const { downloadImage, downloadPDF, downloadSVG, downloadSelectedLayers, downloadAllLayersSeparately } = useExportImage();
   const selectedLayerIds = useEditorStore((s) => s.selectedLayerIds);
   const [format, setFormat] = useState<'png' | 'jpeg' | 'webp' | 'pdf' | 'svg'>('png');
@@ -218,7 +259,7 @@ export const EditorLayout: FC = () => {
   const { message } = App.useApp();
 
   const {
-    content, addLayer, saving, canUndo, canRedo, zoom,
+    content, addLayer, addLayersBatch, saving, canUndo, canRedo, zoom,
     zoomIn, zoomOut, zoomToFit, zoomTo100, showGrid, snapEnabled, toggleGrid, toggleSnap,
     selectedLayerIds, removeLayers, toggleLayerLocked, bringToFront, sendToBack,
     groupSelectedLayers, ungroupSelectedLayers, alignLayers, distributeLayers,
@@ -227,7 +268,7 @@ export const EditorLayout: FC = () => {
     hasClipboardContent, copySelectedLayers, cutSelectedLayers, pasteLayers,
   } = useEditorStore(
     useShallow((s) => ({
-      content: s.content, addLayer: s.addLayer, saving: s.saving,
+      content: s.content, addLayer: s.addLayer, addLayersBatch: s.addLayersBatch, saving: s.saving,
       canUndo: s.canUndo, canRedo: s.canRedo, zoom: s.zoom,
       zoomIn: s.zoomIn, zoomOut: s.zoomOut, zoomToFit: s.zoomToFit, zoomTo100: s.zoomTo100,
       showGrid: s.showGrid, snapEnabled: s.snapEnabled, toggleGrid: s.toggleGrid, toggleSnap: s.toggleSnap,
@@ -261,17 +302,23 @@ export const EditorLayout: FC = () => {
       e.stopPropagation();
       if (!content) return;
       const files = Array.from(e.dataTransfer.files);
+      const allLayers: EditorLayer[] = [];
       for (const file of files) {
-        if (!file.type.startsWith('image/') && !file.type.startsWith('text/svg')) continue;
         try {
-          const parsed = await createLayerFromLocalImage(file, content.canvas);
-          addLayer(parsed.layer);
+          const fileType = detectFileType(file);
+          if (fileType === 'image' || fileType === 'svg' || fileType === 'sketch') {
+            const parsed = await parseDesignFile(file, content.canvas);
+            allLayers.push(...parsed.layers);
+          }
         } catch (err) {
           message.error(`Failed to import ${file.name}`);
         }
       }
+      if (allLayers.length > 0) {
+        addLayersBatch(allLayers);
+      }
     },
-    [content, addLayer]
+    [content, addLayersBatch]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

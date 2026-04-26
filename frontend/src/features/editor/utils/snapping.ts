@@ -16,6 +16,7 @@ interface SnapResult {
 }
 
 interface BoundingBox {
+  id?: string;
   x: number;
   y: number;
   width: number;

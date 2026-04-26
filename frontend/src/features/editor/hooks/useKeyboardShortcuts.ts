@@ -38,16 +38,17 @@ export function useKeyboardShortcuts() {
     const canvasContainer = document.querySelector('[data-canvas-container]');
     if (!canvasContainer) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (e: Event) => {
+      const mouseEvent = e as MouseEvent;
       const rect = canvasContainer.getBoundingClientRect();
       lastMousePositionRef.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
+        x: mouseEvent.clientX - rect.left,
+        y: mouseEvent.clientY - rect.top,
       };
     };
 
-    canvasContainer.addEventListener('mousemove', handleMouseMove);
-    return () => canvasContainer.removeEventListener('mousemove', handleMouseMove);
+    canvasContainer.addEventListener('mousemove', handleMouseMove as EventListener);
+    return () => canvasContainer.removeEventListener('mousemove', handleMouseMove as EventListener);
   }, []);
 
   const handleUndo = useCallback(() => {

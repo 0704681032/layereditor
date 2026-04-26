@@ -46,6 +46,7 @@ interface EditorState {
   hasClipboardContent: boolean; // Whether clipboard has content
 
   setDocument: (payload: { documentId: number; title: string; currentVersion: number; content: EditorDocumentContent }) => void;
+  setContentSilent: (content: EditorDocumentContent, selectedLayerIds?: string[]) => void;
   selectLayers: (layerIds: string[]) => void;
   selectAll: () => void;
   updateContent: (content: EditorDocumentContent) => void;
@@ -650,10 +651,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   cutSelectedLayers: () =>
     set((state) => {
       if (!state.content || state.selectedLayerIds.length === 0) return state;
+      const contentLayers = state.content.layers;
       const layersToCopy = state.selectedLayerIds
-        .map((id) => findLayerById(state.content.layers, id))
+        .map((id) => findLayerById(contentLayers, id))
         .filter(Boolean) as EditorLayer[];
-      let newLayers = state.content.layers;
+      let newLayers = contentLayers;
       for (const id of state.selectedLayerIds) {
         newLayers = removeLayerFromTree(newLayers, id);
       }
