@@ -1,0 +1,17 @@
+Claude Code 重装记录
+==================
+
+操作时间: 2026-04-28
+
+1. 卸载旧版本
+   命令: npm uninstall -g @anthropic-ai/claude-code
+   结果: 已卸载 (移除2个包，耗时698ms)
+
+2. 安装新版本
+   命令: npm install -g @anthropic-ai/claude-code
+   结果: 安装成功 (2个包更新，耗时9秒)
+
+当前版本: @anthropic-ai/claude-code@2.1.121
+安装路径: C:\Users\jyy\AppData\Roaming\npm
+
+完成状态: 成功
