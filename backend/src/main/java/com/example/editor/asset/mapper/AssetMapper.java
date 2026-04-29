@@ -22,4 +22,24 @@ public interface AssetMapper {
                           @Param("kind") String kind);
 
     int updateDocumentId(@Param("id") Long id, @Param("documentId") Long documentId);
+
+    EditorAsset selectBySha256(@Param("sha256") String sha256);
+
+    int deleteById(@Param("id") Long id);
+
+    long selectTotalFileSize();
+
+    long selectCountByKind(@Param("kind") String kind);
+
+    long selectTotalSizeByKind(@Param("kind") String kind);
+
+    List<EditorAsset> searchByFilename(@Param("query") String query,
+                                        @Param("documentId") Long documentId,
+                                        @Param("kind") String kind,
+                                        @Param("offset") int offset,
+                                        @Param("limit") int limit);
+
+    long countSearchByFilename(@Param("query") String query,
+                               @Param("documentId") Long documentId,
+                               @Param("kind") String kind);
 }

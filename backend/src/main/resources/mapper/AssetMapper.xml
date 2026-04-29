@@ -49,4 +49,74 @@
         WHERE id = #{id} AND deleted_at IS NULL
     </update>
 
+    <select id="selectBySha256" resultType="com.example.editor.asset.entity.EditorAsset">
+        SELECT id, owner_id, document_id, kind, filename, mime_type,
+               bucket, storage_key, file_size, width, height, sha256, created_at, deleted_at
+        FROM editor_asset
+        WHERE sha256 = #{sha256} AND deleted_at IS NULL
+        LIMIT 1
+    </select>
+
+    <update id="deleteById">
+        UPDATE editor_asset SET deleted_at = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <select id="selectTotalFileSize" resultType="long">
+        SELECT COALESCE(SUM(file_size), 0)
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+    </select>
+
+    <select id="selectCountByKind" resultType="long">
+        SELECT COUNT(*)
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+        <if test="kind != null and kind != ''">
+            AND kind = #{kind}
+        </if>
+    </select>
+
+    <select id="selectTotalSizeByKind" resultType="long">
+        SELECT COALESCE(SUM(file_size), 0)
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+        <if test="kind != null and kind != ''">
+            AND kind = #{kind}
+        </if>
+    </select>
+
+    <select id="searchByFilename" resultType="com.example.editor.asset.entity.EditorAsset">
+        SELECT id, owner_id, document_id, kind, filename, mime_type,
+               bucket, storage_key, file_size, width, height, sha256, created_at, deleted_at
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+        <if test="query != null and query != ''">
+            AND filename LIKE CONCAT('%', #{query}, '%')
+        </if>
+        <if test="documentId != null">
+            AND document_id = #{documentId}
+        </if>
+        <if test="kind != null and kind != ''">
+            AND kind = #{kind}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSearchByFilename" resultType="long">
+        SELECT COUNT(*)
+        FROM editor_asset
+        WHERE deleted_at IS NULL
+        <if test="query != null and query != ''">
+            AND filename LIKE CONCAT('%', #{query}, '%')
+        </if>
+        <if test="documentId != null">
+            AND document_id = #{documentId}
+        </if>
+        <if test="kind != null and kind != ''">
+            AND kind = #{kind}
+        </if>
+    </select>
+
 </mapper>

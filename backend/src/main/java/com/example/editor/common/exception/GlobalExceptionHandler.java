@@ -1,5 +1,6 @@
 package com.example.editor.common.exception;
 
+import com.example.editor.asset.exception.FileValidationException;
 import com.example.editor.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,16 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
     }
 
+    @ExceptionHandler(FileValidationException.class)
+    public ResponseEntity<ApiResponse<FileValidationDetail>> handleFileValidation(FileValidationException e) {
+        log.warn("File validation failed: code={}, message={}, filename={}, detail={}",
+                e.getCode(), e.getMessage(), e.getFilename(), e.getDetail());
+        FileValidationDetail detail = new FileValidationDetail(
+                e.getCode(), e.getMessage(), e.getFilename(), e.getDetail());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(e.getCode(), e.getMessage(), detail));
+    }
+
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException e) {
         log.warn("Business error: {}", e.getMessage());
@@ -45,4 +56,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(50000, "Internal server error"));
     }
+
+    public record FileValidationDetail(int code, String message, String filename, String detail) {}
 }

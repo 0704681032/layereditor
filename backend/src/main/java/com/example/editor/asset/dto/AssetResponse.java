@@ -12,5 +12,13 @@ public record AssetResponse(
     Integer width,
     Integer height,
     String url,
-    OffsetDateTime createdAt
-) {}
+    OffsetDateTime createdAt,
+    boolean isDuplicate
+) {
+    // Convenience constructor for non-duplicate assets
+    public AssetResponse(Long id, Long documentId, String kind, String filename,
+                         String mimeType, Long fileSize, Integer width, Integer height,
+                         String url, OffsetDateTime createdAt) {
+        this(id, documentId, kind, filename, mimeType, fileSize, width, height, url, createdAt, false);
+    }
+}
