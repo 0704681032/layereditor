@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -89,7 +90,8 @@ public class AssetController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(content.mimeType()));
         headers.setContentLength(content.size());
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + content.filename() + "\"");
+        String encodedFilename = URLEncoder.encode(content.filename(), StandardCharsets.UTF_8).replace("+", "%20");
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedFilename);
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(new FileSystemResource(content.path()));
@@ -103,7 +105,8 @@ public class AssetController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(content.mimeType()));
         headers.setContentLength(content.size());
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + content.filename() + "\"");
+        String encodedThumbFilename = URLEncoder.encode(content.filename(), StandardCharsets.UTF_8).replace("+", "%20");
+        headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedThumbFilename);
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(new FileSystemResource(content.path()));

@@ -6,7 +6,6 @@ import feign.RequestTemplate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -21,8 +20,9 @@ import java.util.Map;
  * Feign configuration for Volcengine API signature authentication
  *
  * Volcengine uses OpenAPI style authentication similar to AWS Signature V4
+ * Note: Not annotated with @Configuration to avoid global bean registration.
+ * This config should be referenced via @FeignClient(configuration = VolcengineFeignConfig.class)
  */
-@Configuration
 @Slf4j
 @RequiredArgsConstructor
 public class VolcengineFeignConfig {

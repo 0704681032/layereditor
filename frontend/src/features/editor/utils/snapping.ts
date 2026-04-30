@@ -89,6 +89,8 @@ export function snapToLayers(
   let bestY = currentY;
   let snappedX = false;
   let snappedY = false;
+  let bestDistX = threshold;
+  let bestDistY = threshold;
 
   // 当前图层的各边缘
   const currentLeft = currentX;
@@ -106,58 +108,36 @@ export function snapToLayers(
     const otherCenterX = other.x + other.width / 2;
     const otherCenterY = other.y + other.height / 2;
 
-    // X 轴吸附检查
-    // 左边对齐右边
-    if (Math.abs(currentLeft - otherRight) < threshold) {
-      bestX = otherRight;
-      snappedX = true;
-    }
-    // 右边对齐左边
-    if (Math.abs(currentRight - otherLeft) < threshold) {
-      bestX = otherLeft - currentWidth;
-      snappedX = true;
-    }
-    // 左边对齐左边
-    if (Math.abs(currentLeft - otherLeft) < threshold) {
-      bestX = otherLeft;
-      snappedX = true;
-    }
-    // 右边对齐右边
-    if (Math.abs(currentRight - otherRight) < threshold) {
-      bestX = otherRight - currentWidth;
-      snappedX = true;
-    }
-    // 中心对齐
-    if (Math.abs(currentCenterX - otherCenterX) < threshold) {
-      bestX = otherCenterX - currentWidth / 2;
-      snappedX = true;
+    // X 轴吸附检查 - 追踪最近距离
+    const xPairs: Array<{ dist: number; snapX: number }> = [
+      { dist: Math.abs(currentLeft - otherRight), snapX: otherRight },
+      { dist: Math.abs(currentRight - otherLeft), snapX: otherLeft - currentWidth },
+      { dist: Math.abs(currentLeft - otherLeft), snapX: otherLeft },
+      { dist: Math.abs(currentRight - otherRight), snapX: otherRight - currentWidth },
+      { dist: Math.abs(currentCenterX - otherCenterX), snapX: otherCenterX - currentWidth / 2 },
+    ];
+    for (const p of xPairs) {
+      if (p.dist < bestDistX) {
+        bestDistX = p.dist;
+        bestX = p.snapX;
+        snappedX = true;
+      }
     }
 
-    // Y 轴吸附检查
-    // 顶边对齐底边
-    if (Math.abs(currentTop - otherBottom) < threshold) {
-      bestY = otherBottom;
-      snappedY = true;
-    }
-    // 底边对齐顶边
-    if (Math.abs(currentBottom - otherTop) < threshold) {
-      bestY = otherTop - currentHeight;
-      snappedY = true;
-    }
-    // 顶边对齐顶边
-    if (Math.abs(currentTop - otherTop) < threshold) {
-      bestY = otherTop;
-      snappedY = true;
-    }
-    // 底边对齐底边
-    if (Math.abs(currentBottom - otherBottom) < threshold) {
-      bestY = otherBottom - currentHeight;
-      snappedY = true;
-    }
-    // 中心对齐
-    if (Math.abs(currentCenterY - otherCenterY) < threshold) {
-      bestY = otherCenterY - currentHeight / 2;
-      snappedY = true;
+    // Y 轴吸附检查 - 追踪最近距离
+    const yPairs: Array<{ dist: number; snapY: number }> = [
+      { dist: Math.abs(currentTop - otherBottom), snapY: otherBottom },
+      { dist: Math.abs(currentBottom - otherTop), snapY: otherTop - currentHeight },
+      { dist: Math.abs(currentTop - otherTop), snapY: otherTop },
+      { dist: Math.abs(currentBottom - otherBottom), snapY: otherBottom - currentHeight },
+      { dist: Math.abs(currentCenterY - otherCenterY), snapY: otherCenterY - currentHeight / 2 },
+    ];
+    for (const p of yPairs) {
+      if (p.dist < bestDistY) {
+        bestDistY = p.dist;
+        bestY = p.snapY;
+        snappedY = true;
+      }
     }
   }
 

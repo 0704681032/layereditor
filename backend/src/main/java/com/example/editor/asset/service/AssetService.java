@@ -359,6 +359,9 @@ public class AssetService {
      * Get thumbnail content if exists.
      */
     public FileContent getThumbnail(Long id, int size) {
+        if (size < 50 || size > 1000) {
+            throw new IllegalArgumentException("Thumbnail size must be between 50 and 1000");
+        }
         EditorAsset asset = assetMapper.selectById(id);
         if (asset == null) {
             throw new NotFoundException("asset not found");
@@ -563,10 +566,13 @@ public class AssetService {
             // Create thumbnail
             BufferedImage thumbnail = new BufferedImage(thumbWidth, thumbHeight, BufferedImage.TYPE_INT_RGB);
             Graphics2D g2d = thumbnail.createGraphics();
-            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-            g2d.drawImage(original, 0, 0, thumbWidth, thumbHeight, null);
-            g2d.dispose();
+            try {
+                g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                g2d.drawImage(original, 0, 0, thumbWidth, thumbHeight, null);
+            } finally {
+                g2d.dispose();
+            }
 
             // Determine output format based on original
             String ext = relativePath.substring(relativePath.lastIndexOf(".")).toLowerCase();
@@ -644,35 +650,38 @@ public class AssetService {
             // Create watermarked image
             BufferedImage watermarked = new BufferedImage(original.getWidth(), original.getHeight(), BufferedImage.TYPE_INT_RGB);
             Graphics2D g2d = watermarked.createGraphics();
-            g2d.drawImage(original, 0, 0, null);
+            try {
+                g2d.drawImage(original, 0, 0, null);
 
-            // Configure watermark text
-            g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity / 100.0f));
-            int fontSize = Math.max(original.getWidth() / 20, 12);
-            g2d.setFont(new Font("Arial", Font.BOLD, fontSize));
-            g2d.setColor(Color.WHITE);
+                // Configure watermark text
+                g2d.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity / 100.0f));
+                int fontSize = Math.max(original.getWidth() / 20, 12);
+                g2d.setFont(new Font("Arial", Font.BOLD, fontSize));
+                g2d.setColor(Color.WHITE);
 
-            // Calculate position
-            FontMetrics fm = g2d.getFontMetrics();
-            int textWidth = fm.stringWidth(watermarkText);
-            int textHeight = fm.getHeight();
-            int x, y;
+                // Calculate position
+                FontMetrics fm = g2d.getFontMetrics();
+                int textWidth = fm.stringWidth(watermarkText);
+                int textHeight = fm.getHeight();
+                int x, y;
 
-            switch (position) {
-                case TOP_LEFT -> { x = 10; y = textHeight + 10; }
-                case TOP_RIGHT -> { x = original.getWidth() - textWidth - 10; y = textHeight + 10; }
-                case BOTTOM_LEFT -> { x = 10; y = original.getHeight() - 10; }
-                case BOTTOM_RIGHT -> { x = original.getWidth() - textWidth - 10; y = original.getHeight() - 10; }
-                case CENTER -> { x = (original.getWidth() - textWidth) / 2; y = original.getHeight() / 2; }
-                default -> { x = 10; y = original.getHeight() - 10; }
+                switch (position) {
+                    case TOP_LEFT -> { x = 10; y = textHeight + 10; }
+                    case TOP_RIGHT -> { x = original.getWidth() - textWidth - 10; y = textHeight + 10; }
+                    case BOTTOM_LEFT -> { x = 10; y = original.getHeight() - 10; }
+                    case BOTTOM_RIGHT -> { x = original.getWidth() - textWidth - 10; y = original.getHeight() - 10; }
+                    case CENTER -> { x = (original.getWidth() - textWidth) / 2; y = original.getHeight() / 2; }
+                    default -> { x = 10; y = original.getHeight() - 10; }
+                }
+
+                // Draw watermark with shadow for better visibility
+                g2d.setColor(Color.BLACK);
+                g2d.drawString(watermarkText, x + 1, y + 1);
+                g2d.setColor(Color.WHITE);
+                g2d.drawString(watermarkText, x, y);
+            } finally {
+                g2d.dispose();
             }
-
-            // Draw watermark with shadow for better visibility
-            g2d.setColor(Color.BLACK);
-            g2d.drawString(watermarkText, x + 1, y + 1);
-            g2d.setColor(Color.WHITE);
-            g2d.drawString(watermarkText, x, y);
-            g2d.dispose();
 
             // Save watermarked image (create new asset)
             String ext = asset.getStorageKey().substring(asset.getStorageKey().lastIndexOf(".")).toLowerCase();

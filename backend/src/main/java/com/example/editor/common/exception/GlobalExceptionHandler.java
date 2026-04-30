@@ -1,6 +1,7 @@
 package com.example.editor.common.exception;
 
 import com.example.editor.asset.exception.FileValidationException;
+import com.example.editor.ai.service.AiImageService;
 import com.example.editor.common.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -41,6 +42,13 @@ public class GlobalExceptionHandler {
         log.warn("Business error: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
+    }
+
+    @ExceptionHandler(AiImageService.AiProcessingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiProcessing(AiImageService.AiProcessingException e) {
+        log.error("AI processing failed: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(50001, "AI processing failed: " + e.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

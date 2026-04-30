@@ -460,8 +460,12 @@ const TextComponent: FC<{ layer: TextLayer }> = memo(({ layer }) => {
         input.focus();
         input.select();
 
+        let editing = true;
         const finishEdit = () => {
+          if (!editing) return;
+          editing = false;
           const newText = input.value;
+          input.removeEventListener('blur', finishEdit);
           input.remove();
           if (newText !== layer.text) {
             useEditorStore.getState().updateLayerPatch(layer.id, { text: newText });
@@ -471,7 +475,7 @@ const TextComponent: FC<{ layer: TextLayer }> = memo(({ layer }) => {
         input.addEventListener('blur', finishEdit);
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); finishEdit(); }
-          if (e.key === 'Escape') { input.remove(); }
+          if (e.key === 'Escape') { finishEdit(); }
           e.stopPropagation();
         });
       }}
@@ -496,9 +500,10 @@ const ImageComponent: FC<{ layer: ImageLayer }> = memo(({ layer }) => {
     if (!imageUrl) return;
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
-    img.src = imageUrl;
     img.onload = () => { setImage(img); };
-    return () => { img.onload = null; };
+    img.onerror = () => { setImage(null); };
+    img.src = imageUrl;
+    return () => { img.onload = null; img.onerror = null; img.src = ''; };
   }, [imageUrl]);
 
   if (!renderedImage) {
@@ -578,9 +583,10 @@ const ComplexSvgImage: FC<{
 
   useEffect(() => {
     const img = new window.Image();
-    img.src = imageUrl;
     img.onload = () => { setImage(img); };
-    return () => { img.onload = null; URL.revokeObjectURL(imageUrl); };
+    img.onerror = () => { setImage(null); };
+    img.src = imageUrl;
+    return () => { img.onload = null; img.onerror = null; img.src = ''; URL.revokeObjectURL(imageUrl); };
   }, [imageUrl]);
 
   if (!image) {

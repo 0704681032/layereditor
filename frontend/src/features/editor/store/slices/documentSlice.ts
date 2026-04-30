@@ -1,5 +1,6 @@
 import type { EditorDocumentContent, Canvas } from '../../types';
 import { pushHistory, initHistory, canUndo, canRedo } from '../history';
+import { cancelPendingLayerPatch } from './layerSlice';
 
 export interface DocumentState {
   documentId: number | null;
@@ -41,6 +42,7 @@ export const createDocumentSlice = (set: any, get: any): DocumentSlice => ({
   canRedo: false,
 
   setDocument: (payload) => {
+    cancelPendingLayerPatch();
     initHistory(payload.content, []);
     set({
       documentId: payload.documentId,
@@ -83,8 +85,9 @@ export const createDocumentSlice = (set: any, get: any): DocumentSlice => ({
   markDirty: () => set({ isDirty: true }),
   setSaving: (saving) => set({ saving }),
 
-  reset: () =>
-    set({
+  reset: () => {
+    cancelPendingLayerPatch();
+    return set({
       documentId: null,
       title: '',
       currentVersion: 0,
@@ -102,5 +105,5 @@ export const createDocumentSlice = (set: any, get: any): DocumentSlice => ({
       guideLines: [],
       drawMode: 'none',
       drawPreview: null,
-    }),
-});
+    });
+  },

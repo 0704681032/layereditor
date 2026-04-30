@@ -47,6 +47,13 @@ const syncHistoryState = () => ({
 
 let patchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+export function cancelPendingLayerPatch() {
+  if (patchDebounceTimer) {
+    clearTimeout(patchDebounceTimer);
+    patchDebounceTimer = null;
+  }
+}
+
 export const createLayerSlice = (set: any, get: any): LayerSlice => ({
   addLayer: (layer: EditorLayer, parentId?: string | null, index?: number) =>
     set((state: any) => {

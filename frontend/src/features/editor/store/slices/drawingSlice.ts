@@ -2,6 +2,8 @@ import type { EditorLayer } from '../../types';
 import type { GuideLine } from '../../components/canvas/SmartGuides';
 import { pushHistory } from '../history';
 
+// pushHistory is used in finishDrawing below
+
 export type DrawMode = 'none' | 'rect' | 'ellipse' | 'line';
 
 export interface DrawingState {
@@ -23,7 +25,7 @@ interface SyncHistoryState {
 }
 
 const syncHistoryState = (): SyncHistoryState => ({
-  canUndo: pushHistory !== null && typeof pushHistory === 'function',
+  canUndo: true,
   canRedo: false,
 });
 

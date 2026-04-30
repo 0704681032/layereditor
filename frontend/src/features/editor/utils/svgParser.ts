@@ -584,13 +584,15 @@ function createPathLayer(el: ParsedSvgElement, baseX: number, baseY: number): Ed
   // This ensures the path renders correctly when placed at x, y position
   const normalizedD = normalizePathData(attrs.d, bounds.minX, bounds.minY);
 
-  // Create SVG with normalized path data
+  // Escape attribute values to prevent XSS from malicious SVG content
+  const escapeAttr = (v: string) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
   const pathAttrs = Object.entries(attrs)
     .filter(([k]) => k !== 'transform' && k !== 'd')
-    .map(([k, v]) => `${k}="${v}"`)
+    .map(([k, v]) => `${k}="${escapeAttr(v)}"`)
     .join(' ');
 
-  const pathSvg = `<svg xmlns="http://www.w3.org/2000/svg"><path d="${normalizedD}" ${pathAttrs}/></svg>`;
+  const pathSvg = `<svg xmlns="http://www.w3.org/2000/svg"><path d="${escapeAttr(normalizedD)}" ${pathAttrs}/></svg>`;
 
   return {
     id: generateId(),
