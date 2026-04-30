@@ -149,14 +149,14 @@ export const DocumentListPage: FC = () => {
                 fontSize: 18,
               }}
             >
-              L
+              织
             </div>
             <div>
               <Title level={3} style={{ margin: 0, fontWeight: 700, color: '#1a1a2e' }}>
-                Layer Editor
+                织梦平台
               </Title>
               <Text type="secondary" style={{ fontSize: 13 }}>
-                Professional design tool for everyone
+                专业设计工具，人人可用
               </Text>
             </div>
           </div>
