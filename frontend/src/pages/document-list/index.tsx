@@ -344,7 +344,7 @@ export const DocumentListPage: FC = () => {
           </div>
           <div>
             <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
-              Powered by React + Konva + Spring Boot
+              Powered by 金阳阳
             </Text>
           </div>
         </div>
