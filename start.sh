@@ -1,177 +1,438 @@
 #!/bin/bash
-# start.sh - 图层编辑器 Mac/Linux 启动脚本
+# start.sh - 图层编辑器一键启动脚本（Mac / Windows Git Bash 通用）
+# 自动检测：JDK 21、PostgreSQL、数据库、前端依赖
+# 使用方法：bash start.sh
 
 set -e
 
-echo "======================================"
-echo "  图层编辑器 - 启动中..."
-echo "======================================"
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Load .env file if present
+# 加载 .env 文件
 if [ -f "$SCRIPT_DIR/.env" ]; then
-    set -a
-    source "$SCRIPT_DIR/.env"
-    set +a
+    set -a; source "$SCRIPT_DIR/.env"; set +a
 fi
 
 # 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 
-# 检查并设置 JDK 21
+# 检测操作系统
+detect_os() {
+    case "$(uname -s)" in
+        Darwin*) echo "mac" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows" ;;
+        Linux*) echo "linux" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+OS=$(detect_os)
+echo "${CYAN}======================================"
+echo "  图层编辑器 - 一键启动"
+echo "  检测到平台: $OS"
+echo "======================================${NC}"
+
+# ========== 1. JDK 21 检测 ==========
 check_java() {
-    # JDK 21 路径（Homebrew 安装位置）
-    JDK21_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+    echo "${YELLOW}[1/5] 检测 JDK 21...${NC}"
 
-    # 如果 JAVA_HOME 未设置或不是 JDK 21，自动设置
-    if [ -z "$JAVA_HOME" ] || [[ ! "$JAVA_HOME" =~ "openjdk@21" ]]; then
-        if [ -d "$JDK21_HOME" ]; then
-            export JAVA_HOME="$JDK21_HOME"
-            echo "${YELLOW}[0/4] 自动设置 JAVA_HOME 为 JDK 21${NC}"
-        else
-            echo "${RED}[0/4] JDK 21 未安装，请先安装：${NC}"
-            echo "${YELLOW}       brew install openjdk@21${NC}"
-            return 1
+    # 候选 JDK 21 路径列表
+    local jdk_paths=()
+
+    if [ "$OS" = "mac" ]; then
+        jdk_paths=(
+            "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+            "/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+            "$HOME/Library/Java/JavaVirtualMachines/openjdk-21"*/Contents/Home
+            "$HOME/.sdkman/candidates/java/21"*/
+        )
+    elif [ "$OS" = "windows" ]; then
+        # Git Bash 下 Windows 路径
+        # 先检查 Windows JAVA_HOME 环境变量
+        if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java.exe" ]; then
+            local ver=$("$JAVA_HOME/bin/java.exe" -version 2>&1 | head -1 | grep -oE 'version "[0-9]+' | head -1 | grep -oE '[0-9]+')
+            if [ "$ver" = "21" ]; then
+                echo "${GREEN}       JAVA_HOME 已指向 JDK 21 ($JAVA_HOME)${NC}"
+                return 0
+            fi
+        fi
+        jdk_paths=(
+            "/d/Program Files (x86)/Java/jdk-21"
+            "/d/Program Files/Java/jdk-21"
+            "/c/Program Files/Java/jdk-21"
+            "/c/Program Files/Eclipse Adoptium/jdk-21.0.6-hotspot"
+            "/c/Program Files/Eclipse Adoptium/jdk-21.0.5-hotspot"
+        )
+    else
+        jdk_paths=(
+            "/usr/lib/jvm/java-21-openjdk"*
+            "/usr/lib/jvm/jdk-21"*
+            "$HOME/.sdkman/candidates/java/21"*/
+        )
+    fi
+
+    # 先检查当前 java 是否已经是 21
+    if command -v java &>/dev/null; then
+        local ver=$(java -version 2>&1 | head -1 | grep -oE '"[0-9]+' | head -1 | tr -d '"')
+        # Java 9+ 版本号就是主版本号，Java 8 是 1.8
+        local major=${ver%%.*}
+        if [ "$major" = "21" ]; then
+            echo "${GREEN}       JDK 21 已就绪 ($(java -version 2>&1 | head -1))${NC}"
+            return 0
         fi
     fi
 
-    # 验证 JDK 版本
-    JAVA_VERSION=$(java -version 2>&1 | head -1 | grep -oP 'version "\K[0-9]+')
-    if [ "$JAVA_VERSION" != "21" ]; then
-        echo "${RED}[0/4] JDK 版本不正确（当前: $JAVA_VERSION），需要 JDK 21${NC}"
-        echo "${YELLOW}       export JAVA_HOME=$JDK21_HOME${NC}"
-        return 1
+    # 搜索候选路径
+    for p in "${jdk_paths[@]}"; do
+        # 使用通配符展开
+        for expanded in $p; do
+            if [ -d "$expanded" ] && [ -x "$expanded/bin/java" ]; then
+                export JAVA_HOME="$expanded"
+                export PATH="$JAVA_HOME/bin:$PATH"
+                echo "${GREEN}       自动设置 JAVA_HOME=$JAVA_HOME${NC}"
+                return 0
+            fi
+        done
+    done
+
+    # 最后尝试 sdkman
+    if [ -f "$HOME/.sdkman/bin/sdkman-init.sh" ]; then
+        source "$HOME/.sdkman/bin/sdkman-init.sh"
+        if java -version 2>&1 | head -1 | grep -q "21"; then
+            echo "${GREEN}       JDK 21 通过 SDKMAN 加载${NC}"
+            return 0
+        fi
     fi
-    echo "${GREEN}[0/4] JDK 21 已就绪${NC}"
+
+    echo "${RED}       未找到 JDK 21！${NC}"
+    if [ "$OS" = "mac" ]; then
+        echo "${YELLOW}       安装: brew install openjdk@21${NC}"
+    elif [ "$OS" = "windows" ]; then
+        echo "${YELLOW}       下载: https://adoptium.net/ 安装 JDK 21${NC}"
+    fi
+    return 1
 }
 
-# 检查 PostgreSQL 是否运行
-check_postgres() {
-    if pg_isready -q 2>/dev/null; then
-        echo "${GREEN}[1/4] PostgreSQL 已运行${NC}"
+# ========== 2. PostgreSQL 检测和启动 ==========
+find_pg_bin() {
+    # 优先使用 PATH 中的 psql
+    if command -v psql &>/dev/null; then
+        dirname "$(command -v psql)"
         return 0
-    else
-        echo "${RED}[1/4] PostgreSQL 未运行，请先启动数据库服务${NC}"
-        echo "${YELLOW}       brew services start postgresql@16${NC}"
-        echo "${YELLOW}       或: pg_ctl -D /usr/local/var/postgres start${NC}"
-        return 1
     fi
+
+    local pg_candidates=()
+    if [ "$OS" = "mac" ]; then
+        pg_candidates=(
+            "/opt/homebrew/opt/postgresql@16/bin"
+            "/opt/homebrew/opt/postgresql@17/bin"
+            "/opt/homebrew/opt/postgresql/bin"
+            "/usr/local/opt/postgresql@16/bin"
+            "/usr/local/opt/postgresql@17/bin"
+            "/usr/local/opt/postgresql/bin"
+            "/Applications/Postgres.app/Contents/Versions/latest/bin"
+        )
+    elif [ "$OS" = "windows" ]; then
+        pg_candidates=(
+            "/d/PostgreSQL/pgsql/bin"
+            "/c/Program Files/PostgreSQL/16/bin"
+            "/c/Program Files/PostgreSQL/17/bin"
+            "/c/Program Files/PostgreSQL/*/bin"
+        )
+    else
+        pg_candidates=(
+            "/usr/lib/postgresql/16/bin"
+            "/usr/lib/postgresql/17/bin"
+            "/usr/lib/postgresql/*/bin"
+        )
+    fi
+
+    for p in "${pg_candidates[@]}"; do
+        for expanded in $p; do
+            if [ -d "$expanded" ] && [ -x "$expanded/psql" -o -x "$expanded/psql.exe" ]; then
+                echo "$expanded"
+                return 0
+            fi
+        done
+    done
+
+    return 1
 }
 
-# 检查并创建数据库
+find_pg_data() {
+    local pg_bin="$1"
+    local data_candidates=()
+
+    if [ "$OS" = "mac" ]; then
+        data_candidates=(
+            "/opt/homebrew/var/postgresql@16"
+            "/opt/homebrew/var/postgresql@17"
+            "/opt/homebrew/var/postgres"
+            "/usr/local/var/postgresql@16"
+            "/usr/local/var/postgres"
+            "$HOME/Library/Application Support/Postgres/var-16"
+        )
+    elif [ "$OS" = "windows" ]; then
+        data_candidates=(
+            "/d/PostgreSQL/data"
+            "/c/Program Files/PostgreSQL/16/data"
+            "/c/Program Files/PostgreSQL/17/data"
+        )
+    else
+        data_candidates=(
+            "/var/lib/postgresql/16/main"
+            "/var/lib/postgresql/17/main"
+            "/var/lib/postgresql/data"
+        )
+    fi
+
+    for p in "${data_candidates[@]}"; do
+        for expanded in $p; do
+            if [ -d "$expanded" ] && [ -f "$expanded/PG_VERSION" ]; then
+                echo "$expanded"
+                return 0
+            fi
+        done
+    done
+
+    return 1
+}
+
+check_postgres() {
+    echo "${YELLOW}[2/5] 检测 PostgreSQL...${NC}"
+
+    local pg_bin
+    pg_bin=$(find_pg_bin) || {
+        echo "${RED}       未找到 PostgreSQL！${NC}"
+        if [ "$OS" = "mac" ]; then
+            echo "${YELLOW}       安装: brew install postgresql@16${NC}"
+        elif [ "$OS" = "windows" ]; then
+            echo "${YELLOW}       下载: https://www.postgresql.org/download/windows/${NC}"
+        fi
+        return 1
+    }
+
+    # 加入 PATH
+    export PATH="$pg_bin:$PATH"
+    echo "       PostgreSQL bin: $pg_bin"
+
+    # 检查端口 5432 是否在监听
+    local port_ok=false
+    if [ "$OS" = "mac" ]; then
+        lsof -i :5432 &>/dev/null && port_ok=true
+    else
+        netstat -an 2>/dev/null | grep -q ":5432 .*LISTEN" && port_ok=true
+    fi
+
+    if $port_ok; then
+        echo "${GREEN}       PostgreSQL 已运行 (端口 5432)${NC}"
+        return 0
+    fi
+
+    # PostgreSQL 没启动，尝试自动启动
+    echo "${YELLOW}       PostgreSQL 未运行，尝试自动启动...${NC}"
+
+    # 方法1: brew services (Mac)
+    if [ "$OS" = "mac" ] && command -v brew &>/dev/null; then
+        local pg_service=$(brew services list 2>/dev/null | grep -E "^postgresql@" | head -1 | awk '{print $1}')
+        if [ -n "$pg_service" ]; then
+            brew services start "$pg_service" 2>/dev/null && {
+                sleep 2
+                echo "${GREEN}       PostgreSQL 已通过 brew services 启动${NC}"
+                return 0
+            }
+        fi
+    fi
+
+    # 方法2: pg_ctl start
+    local pg_data
+    pg_data=$(find_pg_data "$pg_bin") && {
+        local pg_ctl="$pg_bin/pg_ctl"
+        [ -f "$pg_bin/pg_ctl.exe" ] && pg_ctl="$pg_bin/pg_ctl.exe"
+
+        # 查找日志目录
+        local log_dir="/tmp"
+        [ "$OS" = "windows" ] && log_dir="$TEMP"
+
+        "$pg_ctl" start -D "$pg_data" -l "$log_dir/postgresql.log" 2>/dev/null && {
+            sleep 2
+            echo "${GREEN}       PostgreSQL 已通过 pg_ctl 启动 (data: $pg_data)${NC}"
+            return 0
+        }
+    }
+
+    # 方法3: Windows 服务
+    if [ "$OS" = "windows" ]; then
+        powershell.exe -Command "Get-Service -Name 'postgresql*' | Where-Object {\$_.Status -ne 'Running'} | Start-Service" 2>/dev/null && {
+            sleep 3
+            echo "${GREEN}       PostgreSQL 服务已启动${NC}"
+            return 0
+        }
+    fi
+
+    echo "${RED}       无法自动启动 PostgreSQL，请手动启动${NC}"
+    if [ "$OS" = "mac" ]; then
+        echo "${YELLOW}       brew services start postgresql@16${NC}"
+    elif [ "$OS" = "windows" ]; then
+        echo "${YELLOW}       \"D:/PostgreSQL/pgsql/bin/pg_ctl.exe\" start -D \"D:/PostgreSQL/data\"${NC}"
+    fi
+    return 1
+}
+
+# ========== 3. 数据库检测和创建 ==========
 setup_database() {
-    # 使用当前系统用户连接（Mac 本地 PostgreSQL 默认认证方式）
-    local db_user=$(whoami)
+    echo "${YELLOW}[3/5] 检测数据库...${NC}"
+
+    # 确定连接参数
+    local pg_bin
+    pg_bin=$(find_pg_bin)
+
+    local psql_cmd="$pg_bin/psql"
+    [ -f "$pg_bin/psql.exe" ] && psql_cmd="$pg_bin/psql.exe"
+    local createdb_cmd="$pg_bin/createdb"
+    [ -f "$pg_bin/createdb.exe" ] && createdb_cmd="$pg_bin/createdb.exe"
+
+    # 设置连接参数
+    local conn_args="-h localhost -p 5432"
+    if [ "$OS" = "mac" ]; then
+        conn_args="$conn_args -U $(whoami)"
+    else
+        conn_args="$conn_args -U postgres"
+        export PGPASSWORD="${DB_PASSWORD:-postgres}"
+    fi
 
     # 检查数据库是否存在
-    if ! psql -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw layer_editor; then
-        echo "${YELLOW}       创建 layer_editor 数据库...${NC}"
-        createdb layer_editor 2>/dev/null || true
-    fi
-    echo "${GREEN}       数据库已就绪（用户: $db_user）${NC}"
-}
-
-# 检查前端依赖
-check_frontend_deps() {
-    if [ ! -d "$SCRIPT_DIR/frontend/node_modules" ]; then
-        echo "${YELLOW}[2/4] 安装前端依赖...${NC}"
-        cd "$SCRIPT_DIR/frontend" && npm install
+    if "$psql_cmd" $conn_args -lqt 2>/dev/null | cut -d\| -f1 | grep -qw layer_editor; then
+        echo "${GREEN}       数据库 layer_editor 已存在${NC}"
     else
-        echo "${GREEN}[2/4] 前端依赖已安装${NC}"
+        echo "${YELLOW}       创建数据库 layer_editor...${NC}"
+        if [ "$OS" = "mac" ]; then
+            "$createdb_cmd" layer_editor 2>/dev/null || {
+                "$createdb_cmd" -U postgres layer_editor 2>/dev/null || true
+            }
+        else
+            "$createdb_cmd" $conn_args layer_editor 2>/dev/null || true
+        fi
+        # 验证
+        if "$psql_cmd" $conn_args -lqt 2>/dev/null | cut -d\| -f1 | grep -qw layer_editor; then
+            echo "${GREEN}       数据库 layer_editor 创建成功${NC}"
+        else
+            echo "${YELLOW}       数据库可能需要手动创建${NC}"
+            if [ "$OS" = "mac" ]; then
+                echo "       createdb layer_editor"
+            else
+                echo "       PGPASSWORD=postgres createdb -U postgres layer_editor"
+            fi
+        fi
     fi
 }
 
-# 启动后端
+# ========== 4. 前端依赖检测 ==========
+check_frontend_deps() {
+    echo "${YELLOW}[4/5] 检测前端依赖...${NC}"
+    if [ ! -d "$SCRIPT_DIR/frontend/node_modules" ]; then
+        echo "${YELLOW}       安装前端依赖（首次运行）...${NC}"
+        cd "$SCRIPT_DIR/frontend" && npm install
+    fi
+    echo "${GREEN}       前端依赖已就绪${NC}"
+}
+
+# ========== 5. 启动服务 ==========
 start_backend() {
-    echo "${YELLOW}[3/4] 启动后端 (Spring Boot)...${NC}"
+    echo "${YELLOW}[5/5] 启动服务...${NC}"
 
-    # 检查端口是否被占用
-    if lsof -i :8080 >/dev/null 2>&1; then
-        echo "${RED}       端口 8080 已被占用，请先关闭${NC}"
-        echo "${YELLOW}       kill $(lsof -t -i :8080)${NC}"
-        return 1
+    # 确定 Spring profile
+    local profile="${SPRING_PROFILE:-$OS}"
+
+    # 检查 8080 端口
+    if [ "$OS" = "mac" ]; then
+        lsof -i :8080 &>/dev/null && {
+            echo "${GREEN}       后端已在运行 (端口 8080)${NC}"
+            return 0
+        }
+    else
+        netstat -an 2>/dev/null | grep -q ":8080 .*LISTEN" && {
+            echo "${GREEN}       后端已在运行 (端口 8080)${NC}"
+            return 0
+        }
     fi
 
+    echo "       启动后端 (profile: $profile)..."
     cd "$SCRIPT_DIR/backend"
-    # 使用 nohup 后台运行，指定 mac profile
-    nohup mvn spring-boot:run -Dspring-boot.run.profiles=mac > /tmp/layer-editor-backend.log 2>&1 &
-    BACKEND_PID=$!
-    echo "       后端 PID: $BACKEND_PID"
-    echo "${YELLOW}       等待后端启动（约 15-30 秒）...${NC}"
 
-    # 等待后端启动
-    for i in {1..30}; do
-        if curl -s http://localhost:8080/api/documents >/dev/null 2>&1; then
-            echo "${GREEN}       后端启动成功${NC}"
-            return 0
+    local log_dir="/tmp"
+    [ "$OS" = "windows" ] && log_dir="$TEMP"
+
+    nohup mvn spring-boot:run -Dspring-boot.run.profiles="$profile" -DskipTests \
+        > "$log_dir/layer-editor-backend.log" 2>&1 &
+    BACKEND_PID=$!
+
+    # 等待后端启动（最多 60 秒）
+    echo "       等待后端启动..."
+    for i in $(seq 1 60); do
+        if curl -sf http://localhost:8080/api/documents >/dev/null 2>&1; then
+            echo "${GREEN}       后端启动成功 (PID: $BACKEND_PID)${NC}"
+            break
+        fi
+        if [ $i -eq 60 ]; then
+            echo "${RED}       后端启动超时，日志: $log_dir/layer-editor-backend.log${NC}"
+            return 1
         fi
         sleep 1
-        printf "\r       等待中... %d秒" $i
+        printf "\r       等待中... %ds" $i
     done
-    echo "${RED}       后端启动超时，请检查日志: /tmp/layer-editor-backend.log${NC}"
-    return 1
+    echo ""
 }
 
-# 启动前端
 start_frontend() {
-    echo ""
-    echo "${YELLOW}[4/4] 启动前端 (Vite)...${NC}"
-
-    # 检查端口是否被占用
-    if lsof -i :5173 >/dev/null 2>&1; then
-        echo "${RED}       端口 5173 已被占用，请先关闭${NC}"
-        echo "${YELLOW}       kill $(lsof -t -i :5173)${NC}"
-        return 1
+    # 检查 5173 端口
+    if curl -sf http://localhost:5173 >/dev/null 2>&1; then
+        echo "${GREEN}       前端已在运行 (端口 5173)${NC}"
+        return 0
     fi
 
+    echo "       启动前端..."
     cd "$SCRIPT_DIR/frontend"
-    nohup npm run dev > /tmp/layer-editor-frontend.log 2>&1 &
-    FRONTEND_PID=$!
-    echo "       前端 PID: $FRONTEND_PID"
 
-    # 等待前端启动
-    for i in {1..10}; do
-        if curl -s http://localhost:5173 >/dev/null 2>&1; then
-            echo "${GREEN}       前端启动成功${NC}"
+    local log_dir="/tmp"
+    [ "$OS" = "windows" ] && log_dir="$TEMP"
+
+    nohup npm run dev > "$log_dir/layer-editor-frontend.log" 2>&1 &
+    FRONTEND_PID=$!
+
+    for i in $(seq 1 15); do
+        if curl -sf http://localhost:5173 >/dev/null 2>&1; then
+            echo "${GREEN}       前端启动成功 (PID: $FRONTEND_PID)${NC}"
             return 0
         fi
         sleep 1
     done
-    echo "${RED}       前端启动超时，请检查日志: /tmp/layer-editor-frontend.log${NC}"
+    echo "${RED}       前端启动超时，日志: $log_dir/layer-editor-frontend.log${NC}"
     return 1
 }
 
-# 主流程
+# ========== 主流程 ==========
 main() {
-    check_java || exit 1
-    check_postgres || exit 1
+    check_java      || exit 1
+    check_postgres  || exit 1
     setup_database
     check_frontend_deps
-    start_backend || exit 1
-    start_frontend || exit 1
+    start_backend   || exit 1
+    start_frontend  || exit 1
 
     echo ""
-    echo "======================================"
-    echo "${GREEN}  启动完成！${NC}"
-    echo "  后端: http://localhost:8080"
+    echo "${GREEN}======================================"
+    echo "  启动完成！"
     echo "  前端: http://localhost:5173"
-    echo "======================================"
-    echo ""
-    echo "日志文件:"
-    echo "  后端: /tmp/layer-editor-backend.log"
-    echo "  前端: /tmp/layer-editor-frontend.log"
-    echo ""
+    echo "  后端: http://localhost:8080"
+    echo "======================================${NC}"
 
     # 打开浏览器
-    if command -v open >/dev/null 2>&1; then
-        open http://localhost:5173
-    elif command -v xdg-open >/dev/null 2>&1; then
-        xdg-open http://localhost:5173
+    if [ "$OS" = "mac" ]; then
+        open http://localhost:5173 2>/dev/null
+    elif [ "$OS" = "windows" ]; then
+        start http://localhost:5173 2>/dev/null
+    elif command -v xdg-open &>/dev/null; then
+        xdg-open http://localhost:5173 2>/dev/null
     fi
 }
 
