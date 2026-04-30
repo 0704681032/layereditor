@@ -109,3 +109,4 @@ export const createDocumentSlice = (set: any, get: any): DocumentSlice => ({
       drawPreview: null,
     });
   },
+});
