@@ -182,34 +182,55 @@ feign:
 
 ## 快速启动
 
-### 前端启动
+### 一键启动（推荐）
 
+脚本会自动检测 JDK 21、PostgreSQL、数据库，无需手动配置环境。
+
+**Mac / Linux / Windows Git Bash:**
+```bash
+bash start.sh
+```
+
+**Windows 双击运行:**
+```
+双击 start.bat
+```
+
+脚本会自动完成以下检测：
+1. **JDK 21** - 搜索 JAVA_HOME、Homebrew、SDKMAN、常见安装路径
+2. **PostgreSQL** - 自动搜索安装路径，检测端口 5432，未运行时自动启动
+3. **数据库** - 检测 `layer_editor` 是否存在，不存在则自动创建
+4. **建表** - Flyway 自动执行迁移脚本（已执行过的不重复执行）
+5. **启动** - 后端(8080) + 前端(5173)
+
+启动完成后浏览器自动打开 http://localhost:5173
+
+> **首次克隆项目后**只需一条命令 `bash start.sh` 即可完成所有环境检测和服务启动。
+
+### 手动启动
+
+如果一键脚本遇到问题，可手动分步启动：
+
+**前置条件：** JDK 21、PostgreSQL 运行中、`layer_editor` 数据库已创建
+
+**前端:**
 ```bash
 cd frontend
-npm install
-npm run dev
+npm install    # 首次运行
+npm run dev    # http://localhost:5173
 ```
 
-访问 http://localhost:5173
-
-### 后端启动
-
-**Windows:**
+**后端:**
 ```bash
 cd backend
-mvn spring-boot:run
+# Windows:
+mvn spring-boot:run -Dspring-boot.run.profiles=windows
+# Mac:
+mvn spring-boot:run -Dspring-boot.run.profiles=mac
+# http://localhost:8080
 ```
 
-**Mac:**
-```bash
-cd backend
-export JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.10/libexec/openjdk.jdk/Contents/Home
-mvn spring-boot:run
-```
-
-访问 http://localhost:8080
-
-详细启动指南请参考 [STARTUP.md](STARTUP.md)
+详细环境安装指南: [STARTUP_WINDOWS.md](STARTUP_WINDOWS.md) | [STARTUP_MAC.md](STARTUP_MAC.md)
 
 ## 认证
 
