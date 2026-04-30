@@ -356,9 +356,6 @@ public class AssetService {
     }
 
     /**
-     * Get thumbnail content if exists.
-     */
-    /**
      * 获取缩略图内容，支持按需生成。
      * size参数限制在50-1000范围内，防止恶意请求生成超大缩略图消耗服务器资源。
      */
@@ -396,7 +393,9 @@ public class AssetService {
     }
 
     /**
-     * Clean orphaned files - files in storage that have no database record.
+     * 清理孤立文件：删除存储目录中存在但数据库中无记录的文件
+     * 会跳过缩略图目录（缩略图会在访问时按需重新生成）
+     * 注意：此操作不可逆，应限制为管理员权限调用
      */
     public CleanupResult cleanupOrphanedFiles() {
         List<EditorAsset> allAssets = assetMapper.selectList(null, null, 0, Integer.MAX_VALUE);
@@ -547,7 +546,9 @@ public class AssetService {
     }
 
     /**
-     * Generate thumbnail for an image file.
+     * 为图片文件生成指定尺寸的缩略图
+     * 保持原始宽高比，使用双线性插值保证缩放质量
+     * Graphics2D必须用try-finally包裹，否则异常时native资源不会释放导致内存泄漏
      */
     private void generateThumbnail(Path originalPath, String relativePath, int width, int height, int targetSize) {
         try {
@@ -628,7 +629,10 @@ public class AssetService {
     }
 
     /**
-     * Apply watermark to an image asset.
+     * 为图片资产添加水印文字
+     * 处理流程：读取原图 → 创建副本 → 在副本上绘制半透明文字 → 保存为新资产
+     * 支持5种水印位置：左上、右上、左下、右下、居中
+     * 文字带有1px偏移的黑色阴影，提高在浅色背景上的可读性
      */
     @Transactional
     public AssetResponse applyWatermark(Long id, String watermarkText, WatermarkPosition position, int opacity) {

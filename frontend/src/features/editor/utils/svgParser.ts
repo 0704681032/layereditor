@@ -2,8 +2,9 @@ import type { EditorLayer, SvgLayer, ImageLayer } from '../types';
 import { generateId } from './layerTree';
 
 /**
- * Import SVG file as a single Image layer using canvas rendering
- * This is the recommended approach for complex SVGs with masks, transforms, etc.
+ * 将SVG文件导入为位图图层（ImageLayer）
+ * 原理：通过Canvas将SVG渲染为PNG位图，适合含遮罩、复杂变换等无法直接解析的SVG
+ * 推荐用于复杂SVG的导入场景
  */
 export async function importSvgAsImage(
   svgData: string,
@@ -11,13 +12,13 @@ export async function importSvgAsImage(
   baseY: number = 0
 ): Promise<ImageLayer | null> {
   try {
-    // Parse SVG to get dimensions
+    // 使用DOMParser解析SVG字符串，获取尺寸信息
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgData, 'image/svg+xml');
     const svg = doc.querySelector('svg');
     if (!svg) return null;
 
-    // Get viewBox or width/height
+    // 优先使用viewBox获取尺寸，其次使用width/height属性
     const viewBox = svg.getAttribute('viewBox');
     let width = parseFloat(svg.getAttribute('width') || '100');
     let height = parseFloat(svg.getAttribute('height') || '100');
@@ -30,22 +31,21 @@ export async function importSvgAsImage(
       }
     }
 
-    // Scale up for better quality if SVG is small
+    // 小尺寸SVG放大2倍渲染，提高显示质量
     const scale = width < 200 ? 2 : 1;
     const canvasWidth = width * scale;
     const canvasHeight = height * scale;
 
-    // Create canvas and render SVG using DOM method
+    // 创建离屏Canvas并设置缩放上下文
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Scale context for quality
     ctx.scale(scale, scale);
 
-    // Convert SVG to Image and draw to canvas
+    // 将SVG转为Blob URL，通过Image加载后绘制到Canvas
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
     const img = new Image();
@@ -53,7 +53,7 @@ export async function importSvgAsImage(
     await new Promise<void>((resolve, reject) => {
       img.onload = () => {
         ctx.drawImage(img, 0, 0, width, height);
-        URL.revokeObjectURL(url);
+        URL.revokeObjectURL(url); // 绘制完成后立即释放Blob URL
         resolve();
       };
       img.onerror = () => {
@@ -63,7 +63,7 @@ export async function importSvgAsImage(
       img.src = url;
     });
 
-    // Convert canvas to data URL
+    // 将Canvas内容转为PNG Data URL作为图层数据源
     const imageData = canvas.toDataURL('image/png');
 
     return {
@@ -85,8 +85,9 @@ export async function importSvgAsImage(
 }
 
 /**
- * Import SVG as a SvgLayer that preserves the original SVG data
- * This allows the SVG to be rendered by Konva's SVG renderer
+ * 将SVG导入为矢量图层（SvgLayer），保留原始SVG数据
+ * 与importSvgAsImage不同，此方式保留矢量信息，可无损缩放
+ * SVG数据将通过Konva的SVG渲染器进行绘制
  */
 export async function importSvgAsSvgLayer(
   svgData: string,
@@ -134,32 +135,42 @@ export async function importSvgAsSvgLayer(
   }
 }
 
-// Transform matrix representation
+/**
+ * 2D仿射变换矩阵表示，对应SVG的transform属性
+ * [a c e]   [scaleX skewX  translateX]
+ * [b d f] = [skewY  scaleY translateY]
+ * [0 0 1]   [0      0      1         ]
+ */
 interface TransformMatrix {
-  a: number; // scaleX
-  b: number; // skewY
-  c: number; // skewX
-  d: number; // scaleY
-  e: number; // translateX
-  f: number; // translateY
+  a: number; // scaleX（水平缩放）
+  b: number; // skewY（垂直倾斜）
+  c: number; // skewX（水平倾斜）
+  d: number; // scaleY（垂直缩放）
+  e: number; // translateX（水平位移）
+  f: number; // translateY（垂直位移）
 }
 
+/** 解析后的SVG元素结构 */
 interface ParsedSvgElement {
   type: 'text' | 'rect' | 'circle' | 'ellipse' | 'path' | 'line' | 'polygon' | 'image';
-  attributes: Record<string, string>;
-  content?: string;
-  children?: ParsedSvgElement[];
-  transform?: TransformMatrix;
+  attributes: Record<string, string>;  // 元素的所有属性键值对
+  content?: string;                     // 文本内容（仅text/tspan有）
+  children?: ParsedSvgElement[];        // 子元素
+  transform?: TransformMatrix;          // 累积变换矩阵（含父级变换）
 }
 
-// Identity transform matrix
+// 单位矩阵：无任何变换的初始状态
 const IDENTITY_TRANSFORM: TransformMatrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 
-// Parse transform attribute string into matrix
+/**
+ * 解析SVG transform属性字符串为变换矩阵
+ * 支持的变换类型：matrix, translate, scale, rotate
+ * 例如："translate(10, 20) rotate(45) scale(2)" 会被解析并合并为一个矩阵
+ */
 function parseTransform(transformStr: string | undefined): TransformMatrix {
   if (!transformStr) return IDENTITY_TRANSFORM;
 
-  // Handle multiple transforms (e.g., "translate(10, 20) rotate(45)")
+  // 收集所有变换操作，按出现顺序排列
   const transforms: TransformMatrix[] = [];
   const regex = /(\w+)\(([^)]+)\)/g;
   let match;
@@ -168,26 +179,26 @@ function parseTransform(transformStr: string | undefined): TransformMatrix {
     const values = match[2].split(/[\s,]+/).map(v => parseFloat(v.trim()));
 
     switch (type) {
-      case 'matrix':
+      case 'matrix': // 直接指定6参数矩阵
         if (values.length === 6) {
           transforms.push({ a: values[0], b: values[1], c: values[2], d: values[3], e: values[4], f: values[5] });
         }
         break;
-      case 'translate':
+      case 'translate': // 平移
         transforms.push({ a: 1, b: 0, c: 0, d: 1, e: values[0] || 0, f: values[1] || 0 });
         break;
-      case 'scale': {
+      case 'scale': { // 缩放，单参数时等比缩放
         const sx = values[0] || 1;
         const sy = values.length > 1 ? values[1] : sx;
         transforms.push({ a: sx, b: 0, c: 0, d: sy, e: 0, f: 0 });
         break;
       }
-      case 'rotate': {
+      case 'rotate': { // 旋转，支持指定中心点 rotate(angle, cx, cy)
         const angle = (values[0] || 0) * (Math.PI / 180);
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-        // Handle rotate with center point
         if (values.length === 3) {
+          // 绕指定点旋转 = 平移到原点 -> 旋转 -> 平移回来
           const cx = values[1];
           const cy = values[2];
           transforms.push({ a: 1, b: 0, c: 0, d: 1, e: cx, f: cy });
@@ -201,11 +212,14 @@ function parseTransform(transformStr: string | undefined): TransformMatrix {
     }
   }
 
-  // Combine all transforms (first transform is applied first)
+  // 将所有变换按顺序合并为一个矩阵（先执行的在reduce左侧）
   return transforms.reduce((acc, t) => multiplyTransforms(acc, t), IDENTITY_TRANSFORM);
 }
 
-// Multiply two transform matrices (parent * child)
+/**
+ * 矩阵乘法：将两个变换合并为一个等价变换
+ * parent是先应用的变换，child是后应用的变换
+ */
 function multiplyTransforms(parent: TransformMatrix, child: TransformMatrix): TransformMatrix {
   return {
     a: parent.a * child.a + parent.c * child.b,
@@ -217,7 +231,7 @@ function multiplyTransforms(parent: TransformMatrix, child: TransformMatrix): Tr
   };
 }
 
-// Apply transform to a point (x, y)
+/** 将变换矩阵应用到一个点(x,y)上，返回变换后的坐标 */
 function applyTransform(transform: TransformMatrix, x: number, y: number): { x: number; y: number } {
   return {
     x: transform.a * x + transform.c * y + transform.e,
@@ -225,7 +239,10 @@ function applyTransform(transform: TransformMatrix, x: number, y: number): { x: 
   };
 }
 
-// Apply transform to estimate bounds of a rectangle
+/**
+ * 对矩形边界框应用变换，返回变换后的最小包围矩形
+ * 方法：变换四个顶点，再取所有顶点的最小/最大xy值
+ */
 function transformBounds(transform: TransformMatrix, bounds: { minX: number; minY: number; maxX: number; maxY: number }): { minX: number; minY: number; maxX: number; maxY: number } {
   const corners = [
     applyTransform(transform, bounds.minX, bounds.minY),
@@ -241,7 +258,10 @@ function transformBounds(transform: TransformMatrix, bounds: { minX: number; min
   };
 }
 
-// SVG gradient ID to actual color mapping
+/**
+ * SVG渐变ID到实际颜色的映射表
+ * 简化处理：将渐变替换为单一主色，因为Konva不支持SVG渐变
+ */
 const SVG_GRADIENT_COLORS: Record<string, string> = {
   'url(#bg1)': '#764ba2',
   'url(#gold)': '#FFD700',
@@ -268,6 +288,10 @@ const SVG_GRADIENT_COLORS: Record<string, string> = {
   'url(#starFill)': '#FFC107',
 };
 
+/**
+ * 将SVG填充属性规范化为十六进制颜色值
+ * 处理三种情况：空值→灰色、渐变引用→映射主色、rgba→去空格、其他→原样返回
+ */
 function normalizeFill(fill: string | undefined): string {
   if (!fill || fill === 'none') {
     return '#e0e0e0';
@@ -282,10 +306,10 @@ function normalizeFill(fill: string | undefined): string {
 }
 
 /**
- * Parse SVG string and extract editable elements
- * Note: This is a simplified parser for basic SVG elements
- * Complex SVGs with masks, clipPaths, complex transforms may not parse correctly
- * For complex SVGs, use importSvgAsImage or importSvgAsSvgLayer instead
+ * 解析SVG字符串，提取可编辑的图形元素
+ * 注意：这是一个简化解析器，仅支持基础SVG元素
+ * 含遮罩(masks)、裁剪路径(clipPaths)、复杂变换的SVG可能解析不正确
+ * 对于复杂SVG，建议使用 importSvgAsImage 或 importSvgAsSvgLayer
  */
 export function parseSvgElements(svgData: string): ParsedSvgElement[] {
   const parser = new DOMParser();
@@ -298,18 +322,22 @@ export function parseSvgElements(svgData: string): ParsedSvgElement[] {
   return elements;
 }
 
+/**
+ * 递归遍历SVG DOM树，提取可编辑元素
+ * 父级变换会累积传递给子元素（例如<g transform="...">内的所有子元素都受影响）
+ */
 function walkSvgElements(parent: Element, result: ParsedSvgElement[], parentTransform: TransformMatrix) {
   for (const child of parent.children) {
     const tagName = child.tagName.toLowerCase();
 
-    // Skip defs, style, metadata, clipPath, mask, etc.
+    // 跳过非视觉元素：定义、样式、元数据、脚本、裁剪路径、遮罩等
     if (['defs', 'style', 'metadata', 'title', 'desc', 'script', 'clippath', 'mask'].includes(tagName)) {
       continue;
     }
 
     const attributes = getAttributes(child);
 
-    // Accumulate transform from this element
+    // 累积变换：将当前元素的变换与父级变换合并
     const localTransform = parseTransform(attributes.transform);
     const accumulatedTransform = multiplyTransforms(parentTransform, localTransform);
 
@@ -363,10 +391,10 @@ function walkSvgElements(parent: Element, result: ParsedSvgElement[], parentTran
         transform: accumulatedTransform,
       });
     } else if (tagName === 'g') {
-      // Group - walk children with accumulated transform
+      // <g>组元素：递归遍历子元素，传递累积变换
       walkSvgElements(child, result, accumulatedTransform);
     } else {
-      // Walk nested elements with accumulated transform
+      // 未知元素：尝试递归遍历其子元素（如svg嵌套svg等）
       walkSvgElements(child, result, accumulatedTransform);
     }
   }

@@ -152,7 +152,9 @@ export function snapToLayers(
 }
 
 /**
- * 综合吸附（网格 + 图层）
+ * 综合吸附策略：优先吸附到图层边缘，未匹配时再吸附到网格
+ * 吸附优先级：图层对齐 > 网格对齐
+ * 两个维度的吸附独立判断（X轴吸附不影响Y轴）
  */
 export function snapPosition(
   x: number,
@@ -201,7 +203,10 @@ export function snapPosition(
 }
 
 /**
- * 等间距吸附 - 当图层间距与其他图层间距相等时吸附
+ * 等间距吸附检测
+ * 原理：当当前图层与周围图层的间距接近相等时，自动调整到精确等间距
+ * 例如三个图层横向排列，当中间图层的左右间距差值小于阈值时触发吸附
+ * 需要至少2个其他图层才能计算间距关系
  */
 export function snapToEqualSpacing(
   currentX: number,
@@ -225,7 +230,7 @@ export function snapToEqualSpacing(
   const curTop = currentY;
   const curBottom = currentY + currentHeight;
 
-  // Collect all gaps from other layers
+  // 收集四个方向的间隙信息：当前图层与每个其他图层在上下左右方向的距离
   const leftGaps: Array<{ layerId: string; gap: number; targetRight: number }> = [];
   const rightGaps: Array<{ layerId: string; gap: number; targetLeft: number }> = [];
   const topGaps: Array<{ layerId: string; gap: number; targetBottom: number }> = [];
@@ -273,7 +278,8 @@ export function snapToEqualSpacing(
     }
   }
 
-  // Check for equal horizontal spacing (left side)
+  // 检测水平等间距：将左侧间隙排序后，比较相邻间隙差值
+  // 差值小于阈值时认为间距相等，计算平均间距并调整当前图层位置
   if (leftGaps.length >= 2) {
     const positiveGaps = leftGaps.filter(g => g.gap > 0);
     if (positiveGaps.length >= 2) {
@@ -297,7 +303,7 @@ export function snapToEqualSpacing(
     }
   }
 
-  // Check for equal vertical spacing (top side)
+  // 检测垂直等间距：同水平逻辑，比较顶部间隙的相邻差值
   if (topGaps.length >= 2) {
     const positiveGaps = topGaps.filter(g => g.gap > 0);
     if (positiveGaps.length >= 2) {
