@@ -327,6 +327,27 @@ export const DocumentListPage: FC = () => {
           onClose={() => setTemplateModalOpen(false)}
           onSelect={onSelectTemplate}
         />
+
+        {/* Footer */}
+        <div
+          style={{
+            marginTop: 48,
+            textAlign: 'center',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: 13,
+          }}
+        >
+          <div style={{ marginBottom: 8 }}>
+            <Text style={{ color: 'rgba(255,255,255,0.6)' }}>
+              © 2026 织梦平台 · 让设计触手可及
+            </Text>
+          </div>
+          <div>
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>
+              Powered by React + Konva + Spring Boot
+            </Text>
+          </div>
+        </div>
       </div>
     </div>
   );
