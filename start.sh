@@ -369,7 +369,9 @@ start_backend() {
     # 等待后端启动（最多 60 秒）
     echo "       等待后端启动..."
     for i in $(seq 1 60); do
-        if curl -sf http://localhost:8080/api/documents >/dev/null 2>&1; then
+        # 检测端口响应（401也表示服务已启动）
+        local code=$(curl --noproxy localhost -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/documents 2>/dev/null)
+        if [ -n "$code" ] && [ "$code" != "000" ]; then
             echo "${GREEN}       后端启动成功 (PID: $BACKEND_PID)${NC}"
             break
         fi
@@ -385,7 +387,7 @@ start_backend() {
 
 start_frontend() {
     # 检查 5173 端口
-    if curl -sf http://localhost:5173 >/dev/null 2>&1; then
+    if curl --noproxy localhost -sf http://localhost:5173 >/dev/null 2>&1; then
         echo "${GREEN}       前端已在运行 (端口 5173)${NC}"
         return 0
     fi
@@ -400,7 +402,7 @@ start_frontend() {
     FRONTEND_PID=$!
 
     for i in $(seq 1 15); do
-        if curl -sf http://localhost:5173 >/dev/null 2>&1; then
+        if curl --noproxy localhost -sf http://localhost:5173 >/dev/null 2>&1; then
             echo "${GREEN}       前端启动成功 (PID: $FRONTEND_PID)${NC}"
             return 0
         fi
