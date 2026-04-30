@@ -80,7 +80,30 @@
       "Bash('D:/Program Files \\(x86\\)/Java/jdk-21/bin/java' -version)",
       "Bash(npm install:*)",
       "mcp__chrome-devtools__fill_form",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(createdb -U postgres layer_editor)",
+      "Bash(open:*)",
+      "Bash(chmod +x:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(./mvnw spring-boot:run -Dspring-boot.run.profiles=mac)",
+      "Bash(export JAVA_HOME=/Users/jyy/Library/Java/JavaVirtualMachines/openjdk-22.0.2/Contents/Home)",
+      "Bash(mvn spring-boot:run -Dspring-boot.run.profiles=mac)",
+      "Bash(/usr/local/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin/java --version)",
+      "Bash(/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home/bin/java --version)",
+      "Bash(export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home)",
+      "Bash(echo \"后端启动中，PID: $!\" sleep 20 curl -s http://localhost:8080/api/documents)",
+      "mcp__chrome-devtools__select_page",
+      "mcp__chrome-devtools__get_network_request",
+      "Skill(checkin)",
+      "Bash(kong version:*)",
+      "Bash(git pull *)",
+      "Bash(git reset *)",
+      "Bash(mvn spring-boot:run -DskipTests)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(/usr/local/opt/openjdk@21/bin/java -version)",
+      "Bash(/opt/homebrew/Cellar/openjdk@21/21.0.10/bin/java *)",
+      "Bash(JAVA_HOME=/opt/homebrew/Cellar/openjdk@21/21.0.10/libexec/openjdk.jdk/Contents/Home mvn spring-boot:run *)"
     ]
   }
 }

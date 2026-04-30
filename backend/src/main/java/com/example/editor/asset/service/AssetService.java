@@ -77,9 +77,9 @@ public class AssetService {
     );
 
     // Allowed file extensions (lowercase, with dot)
-    // Note: SVG is intentionally excluded as it can embed malicious JavaScript
+    // SVG is allowed only when kind="svg" (sanitized by DocumentService via SvgSanitizer)
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico"
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg"
     );
 
     // Mapping from extension to allowed MIME types
@@ -90,7 +90,8 @@ public class AssetService {
             Map.entry(".gif", Set.of("image/gif")),
             Map.entry(".webp", Set.of("image/webp")),
             Map.entry(".bmp", Set.of("image/bmp", "image/x-ms-bmp")),
-            Map.entry(".ico", Set.of("image/x-icon", "image/vnd.microsoft.icon"))
+            Map.entry(".ico", Set.of("image/x-icon", "image/vnd.microsoft.icon")),
+            Map.entry(".svg", Set.of("image/svg+xml"))
     );
 
     // Dangerous extensions that must never be allowed
@@ -108,7 +109,7 @@ public class AssetService {
 
         try {
             String originalFilename = file.getOriginalFilename();
-            String ext = extractAndValidateExtension(originalFilename);
+            String ext = extractAndValidateExtension(originalFilename, kind);
 
             // Read file bytes first for validation and deduplication
             byte[] fileBytes = file.getBytes();
@@ -242,6 +243,8 @@ public class AssetService {
         } catch (IOException e) {
             log.warn("Failed to delete asset file {}: {}", asset.getStorageKey(), e.getMessage());
         }
+        // Delete thumbnails to avoid orphaned files
+        deleteThumbnails(asset.getStorageKey());
         // Delete database record
         assetMapper.deleteById(id);
     }
@@ -394,8 +397,8 @@ public class AssetService {
                 .map(EditorAsset::getStorageKey)
                 .collect(Collectors.toSet());
 
-        int deletedFiles = 0;
-        long deletedSize = 0;
+        java.util.concurrent.atomic.AtomicInteger deletedFiles = new java.util.concurrent.atomic.AtomicInteger(0);
+        java.util.concurrent.atomic.AtomicLong deletedSize = new java.util.concurrent.atomic.AtomicLong(0);
 
         try {
             Files.walk(Paths.get(storagePath))
@@ -407,6 +410,8 @@ public class AssetService {
                             try {
                                 long size = Files.size(p);
                                 Files.delete(p);
+                                deletedFiles.incrementAndGet();
+                                deletedSize.addAndGet(size);
                                 log.info("Deleted orphaned file: {} ({} bytes)", relative, size);
                             } catch (IOException e) {
                                 log.warn("Failed to delete orphaned file {}: {}", relative, e.getMessage());
@@ -417,7 +422,7 @@ public class AssetService {
             log.error("Failed to walk storage directory: {}", e.getMessage());
         }
 
-        return new CleanupResult(deletedFiles, deletedSize);
+        return new CleanupResult(deletedFiles.get(), deletedSize.get());
     }
 
     public record FileContent(Path path, String filename, String mimeType, long size) {}
@@ -474,8 +479,10 @@ public class AssetService {
 
     /**
      * Extract file extension and validate against allowlist + Content-Type consistency.
+     * @param originalFilename the original filename
+     * @param kind the asset kind (e.g., "image", "svg")
      */
-    private String extractAndValidateExtension(String originalFilename) {
+    private String extractAndValidateExtension(String originalFilename, String kind) {
         if (originalFilename == null || !originalFilename.contains(".")) {
             throw FileValidationException.extensionNotAllowed("");
         }
@@ -484,6 +491,11 @@ public class AssetService {
         // Block dangerous extensions first
         if (BLOCKED_EXTENSIONS.contains(ext)) {
             throw FileValidationException.extensionBlocked(ext);
+        }
+
+        // SVG is only allowed when kind="svg" (DocumentService sanitizes via SvgSanitizer)
+        if (".svg".equals(ext) && !"svg".equals(kind)) {
+            throw FileValidationException.extensionNotAllowed(ext);
         }
 
         // Must be in allowlist

@@ -32,7 +32,7 @@
 - Ant Design UI组件
 
 ### 后端
-- Spring Boot 3.4
+- Spring Boot 3.3.6
 - Spring Security (HTTP Basic Auth)
 - MyBatis 数据访问
 - OpenFeign + HttpClient5 (AI API调用)

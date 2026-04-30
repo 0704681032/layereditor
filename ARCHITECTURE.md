@@ -45,7 +45,7 @@
 | **ORM** | MyBatis | 3.0.4 | 数据库访问 |
 | **数据库** | PostgreSQL | 16 | 数据存储 |
 | **迁移工具** | Flyway | - | Schema 管理 |
-| **安全** | Spring Security | - | CSRF 禁用，开放访问 |
+| **安全** | Spring Security | - | HTTP Basic认证，CSRF禁用 |
 | **工具** | Lombok | 1.18 | 代码简化 |
 
 ---
@@ -124,8 +124,8 @@ layereditor/
 │   │   │   ├── service/RevisionService.java
 │   │   │   ├── entity/EditorDocumentRevision.java
 │   │   │   └── mapper/RevisionMapper.java + .xml
-│   │   ├── security/SecurityConfig.java      # 安全配置
-│   │   └── svg/SvgSanitizer.java             # SVG 安全清洗
+│   │   ├── common/security/SecurityConfig.java  # 安全配置（HTTP Basic认证）
+│   │   └── common/util/SvgSanitizer.java        # SVG 安全清洗
 │   ├── src/main/resources/
 │   │   ├── application.yml                   # 应用配置
 │   │   ├── db/migration/                     # Flyway 迁移

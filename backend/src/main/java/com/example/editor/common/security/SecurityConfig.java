@@ -13,6 +13,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -24,20 +27,16 @@ public class SecurityConfig {
     @Value("${app.auth.password:editor}")
     private String authPassword;
 
+    @Value("${app.cors.allowed-origins}")
+    private List<String> allowedOrigins;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // Enable CORS (uses CorsConfigurationSource from WebMvc CORS mapping)
+            // Enable CORS with configurable origins
             .cors(cors -> cors.configurationSource(request -> {
-                var config = new org.springframework.web.cors.CorsConfiguration();
-                config.addAllowedOrigin("http://localhost:5173");
-                config.addAllowedOrigin("http://localhost:5174");
-                config.addAllowedOrigin("http://localhost:5175");
-                config.addAllowedOrigin("http://localhost:5176");
-                config.addAllowedOrigin("http://localhost:5177");
-                config.addAllowedOrigin("http://localhost:5178");
-                config.addAllowedOrigin("http://localhost:5179");
-                config.addAllowedOrigin("http://localhost:3000");
+                var config = new CorsConfiguration();
+                config.setAllowedOrigins(allowedOrigins);
                 config.addAllowedMethod("*");
                 config.addAllowedHeader("*");
                 config.setAllowCredentials(true);

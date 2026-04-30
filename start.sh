@@ -23,6 +23,33 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# 检查并设置 JDK 21
+check_java() {
+    # JDK 21 路径（Homebrew 安装位置）
+    JDK21_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+
+    # 如果 JAVA_HOME 未设置或不是 JDK 21，自动设置
+    if [ -z "$JAVA_HOME" ] || [[ ! "$JAVA_HOME" =~ "openjdk@21" ]]; then
+        if [ -d "$JDK21_HOME" ]; then
+            export JAVA_HOME="$JDK21_HOME"
+            echo "${YELLOW}[0/4] 自动设置 JAVA_HOME 为 JDK 21${NC}"
+        else
+            echo "${RED}[0/4] JDK 21 未安装，请先安装：${NC}"
+            echo "${YELLOW}       brew install openjdk@21${NC}"
+            return 1
+        fi
+    fi
+
+    # 验证 JDK 版本
+    JAVA_VERSION=$(java -version 2>&1 | head -1 | grep -oP 'version "\K[0-9]+')
+    if [ "$JAVA_VERSION" != "21" ]; then
+        echo "${RED}[0/4] JDK 版本不正确（当前: $JAVA_VERSION），需要 JDK 21${NC}"
+        echo "${YELLOW}       export JAVA_HOME=$JDK21_HOME${NC}"
+        return 1
+    fi
+    echo "${GREEN}[0/4] JDK 21 已就绪${NC}"
+}
+
 # 检查 PostgreSQL 是否运行
 check_postgres() {
     if pg_isready -q 2>/dev/null; then
@@ -121,6 +148,7 @@ start_frontend() {
 
 # 主流程
 main() {
+    check_java || exit 1
     check_postgres || exit 1
     setup_database
     check_frontend_deps

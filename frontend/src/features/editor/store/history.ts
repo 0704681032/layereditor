@@ -20,7 +20,7 @@ let history: HistoryEntry[] = [];      // 存储完整快照
 let patchHistory: PatchHistoryEntry[] = []; // 存储 patches
 let historyIndex = -1;
 let currentContent: EditorDocumentContent | null = null;
-let usePatchesMode = true;  // 使用 patches 模式以节省内存
+const usePatchesMode = true;  // 使用 patches 模式以节省内存
 
 // 记录当前状态并生成 patches
 export function pushHistory(entry: HistoryEntry) {

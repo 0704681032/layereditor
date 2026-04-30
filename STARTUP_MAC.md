@@ -14,7 +14,9 @@
 
 ## 一、安装依赖软件
 
-### 1. 安装 Java 21
+### 1. 安装 Java 21（必须！）
+
+**重要：本项目必须使用 JDK 21，其他版本（如 JDK 22）会导致 Lombok 编译失败。**
 
 推荐使用 **Homebrew**：
 
@@ -22,14 +24,31 @@
 brew install openjdk@21
 
 # 创建符号链接
-sudo ln -sfn /usr/local/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
+sudo ln -sfn /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 
 # 验证
-java --version
+/opt/homebrew/opt/openjdk@21/bin/java --version
 # 应输出：openjdk version "21.0.x"
 ```
 
 或手动下载 [Adoptium](https://adoptium.net/) 安装。
+
+**检查当前默认 Java 版本：**
+
+```bash
+java --version
+```
+
+如果显示的不是 JDK 21，需要设置 `JAVA_HOME`：
+
+```bash
+# 临时设置（仅当前终端有效）
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+
+# 或永久设置（添加到 ~/.zshrc 或 ~/.bash_profile）
+echo 'export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home' >> ~/.zshrc
+source ~/.zshrc
+```
 
 ### 2. 安装 Node.js
 
@@ -102,6 +121,11 @@ cd layereditor
 
 ```bash
 cd backend
+
+# 设置 JAVA_HOME（如果默认不是 JDK 21）
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+
+# 启动后端（使用 mac profile）
 mvn spring-boot:run -Dspring-boot.run.profiles=mac
 ```
 
@@ -168,7 +192,27 @@ start.bat
 
 ## 六、常见问题
 
-### 1. PostgreSQL 未运行
+### 1. JDK 版本不兼容
+
+**症状：** 编译时报错 `java.lang.ExceptionInInitializerError: com.sun.tools.javac.code.TypeTag`
+
+**原因：** 使用了 JDK 22 或其他非 JDK 21 版本，Lombok 不兼容。
+
+**解决方案：**
+
+```bash
+# 检查当前 Java 版本
+java --version
+
+# 如果不是 JDK 21，设置 JAVA_HOME
+export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
+
+# 重新编译
+cd backend
+mvn clean compile -DskipTests
+```
+
+### 2. PostgreSQL 未运行
 
 ```bash
 # 启动服务
@@ -178,31 +222,55 @@ brew services start postgresql@16
 pg_ctl -D /usr/local/var/postgresql@16 start
 ```
 
-### 2. 端口被占用
+### 3. 端口被占用
+
+**症状：** 后端启动失败，提示 `Port 8080 was already in use`
+
+**原因：** 其他项目（如 gaoding）或其他进程占用了端口。
+
+**解决方案：**
 
 ```bash
-# 查找并终止占用进程
+# 查看占用 8080 端口的进程
 lsof -i :8080
+
+# 终止占用进程
+kill $(lsof -t -i :8080)
+
+# 或指定具体 PID
 kill <PID>
 
-lsof -i :5173
-kill <PID>
+# 然后重新启动后端
+./start.sh
 ```
 
-### 3. Maven 未安装
+### 4. Maven 未安装
 
 ```bash
 brew install maven
 ```
 
-### 4. npm install 网络慢
+### 5. npm install 网络慢
 
 ```bash
 npm config set registry https://registry.npmmirror.com
 npm install
 ```
 
-### 5. 数据库连接失败
+### 6. 前端依赖缺失
+
+**症状：** 页面显示 `Failed to resolve import "jszip"`
+
+**解决方案：**
+
+```bash
+cd frontend
+npm install jszip
+# 或重新安装所有依赖
+npm install
+```
+
+### 7. 数据库连接失败
 
 检查 PostgreSQL 监听状态：
 

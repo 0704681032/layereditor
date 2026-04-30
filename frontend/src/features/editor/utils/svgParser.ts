@@ -176,12 +176,13 @@ function parseTransform(transformStr: string | undefined): TransformMatrix {
       case 'translate':
         transforms.push({ a: 1, b: 0, c: 0, d: 1, e: values[0] || 0, f: values[1] || 0 });
         break;
-      case 'scale':
+      case 'scale': {
         const sx = values[0] || 1;
         const sy = values.length > 1 ? values[1] : sx;
         transforms.push({ a: sx, b: 0, c: 0, d: sy, e: 0, f: 0 });
         break;
-      case 'rotate':
+      }
+      case 'rotate': {
         const angle = (values[0] || 0) * (Math.PI / 180);
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
@@ -196,6 +197,7 @@ function parseTransform(transformStr: string | undefined): TransformMatrix {
           transforms.push({ a: cos, b: sin, c: -sin, d: cos, e: 0, f: 0 });
         }
         break;
+      }
     }
   }
 
@@ -631,7 +633,6 @@ function shiftPathCoordinates(d: string, offsetX: number, offsetY: number): stri
   const commands = d.match(/[MLHVCSQTAZ][^MLHVCSQTAZ]*/gi) || [];
 
   let result = '';
-  let isX = true; // Track alternating x/y coordinates
 
   for (const cmd of commands) {
     const type = cmd[0];

@@ -561,6 +561,56 @@ const GroupComponent: FC<{ layer: GroupLayer }> = memo(({ layer }) => {
   );
 });
 
+// Complex SVG rendered as Image (extracted to fix hook rules)
+const ComplexSvgImage: FC<{
+  layer: SvgLayer;
+  selectLayers: (ids: string[]) => void;
+  handleDragMove: (e: Konva.KonvaEventObject<DragEvent>) => void;
+  handleDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
+  svgRef: React.RefObject<Konva.Node | null>;
+}> = memo(({ layer, selectLayers, handleDragMove, handleDragEnd, svgRef }) => {
+  const imageUrl = useMemo(() => {
+    const blob = new Blob([layer.svgData], { type: 'image/svg+xml' });
+    return URL.createObjectURL(blob);
+  }, [layer.svgData]);
+
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.src = imageUrl;
+    img.onload = () => { setImage(img); };
+    return () => { img.onload = null; URL.revokeObjectURL(imageUrl); };
+  }, [imageUrl]);
+
+  if (!image) {
+    return (
+      <Rect id={layer.id} x={layer.x} y={layer.y}
+        width={layer.width ?? 200} height={layer.height ?? 200}
+        fill="#e0e0e0" stroke="#999" strokeWidth={1}
+        visible={layer.visible !== false}
+        onClick={() => selectLayers([layer.id])}
+      />
+    );
+  }
+
+  return (
+    <KonvaImage
+      ref={svgRef as never}
+      id={layer.id} image={image}
+      x={layer.x} y={layer.y}
+      width={layer.width ?? 200} height={layer.height ?? 200}
+      rotation={layer.rotation ?? 0} opacity={layer.opacity ?? 1}
+      visible={layer.visible !== false} draggable={!layer.locked}
+      onClick={() => selectLayers([layer.id])} onTap={() => selectLayers([layer.id])}
+      onDragMove={handleDragMove}
+      onDragEnd={handleDragEnd}
+      {...toShadowProps(layer.shadow)}
+      {...toBlendMode(layer.blendMode)}
+    />
+  );
+});
+
 const SvgComponent: FC<{ layer: SvgLayer }> = memo(({ layer }) => {
   const selectLayers = useEditorStore((s) => s.selectLayers);
   const { handleDragMove, handleDragEnd } = useSmartGuideDrag(layer);
@@ -618,45 +668,14 @@ const SvgComponent: FC<{ layer: SvgLayer }> = memo(({ layer }) => {
     );
   }
 
-  // Complex SVG: render as Image
-  const imageUrl = useMemo(() => {
-    const blob = new Blob([layer.svgData], { type: 'image/svg+xml' });
-    return URL.createObjectURL(blob);
-  }, [layer.svgData]);
-
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-
-  useEffect(() => {
-    const img = new window.Image();
-    img.src = imageUrl;
-    img.onload = () => { setImage(img); };
-    return () => { img.onload = null; URL.revokeObjectURL(imageUrl); };
-  }, [imageUrl]);
-
-  if (!image) {
-    return (
-      <Rect id={layer.id} x={layer.x} y={layer.y}
-        width={layer.width ?? 200} height={layer.height ?? 200}
-        fill="#e0e0e0" stroke="#999" strokeWidth={1}
-        visible={layer.visible !== false}
-        onClick={() => selectLayers([layer.id])}
-      />
-    );
-  }
-
+  // Complex SVG: render as Image via separate component (hooks at top level)
   return (
-    <KonvaImage
-      ref={svgRef as never}
-      id={layer.id} image={image}
-      x={layer.x} y={layer.y}
-      width={layer.width ?? 200} height={layer.height ?? 200}
-      rotation={layer.rotation ?? 0} opacity={layer.opacity ?? 1}
-      visible={layer.visible !== false} draggable={!layer.locked}
-      onClick={() => selectLayers([layer.id])} onTap={() => selectLayers([layer.id])}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-      {...toShadowProps(layer.shadow)}
-      {...toBlendMode(layer.blendMode)}
+    <ComplexSvgImage
+      layer={layer}
+      selectLayers={selectLayers}
+      handleDragMove={handleDragMove}
+      handleDragEnd={handleDragEnd}
+      svgRef={svgRef}
     />
   );
 });

@@ -18,7 +18,7 @@ interface UpdateTitleRequest {
   title: string;
 }
 
-interface DocumentListResponse {
+export interface DocumentListResponse {
   items: DocumentListItem[];
   total: number;
   page: number;

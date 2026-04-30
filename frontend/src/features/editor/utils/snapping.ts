@@ -182,7 +182,7 @@ export function snapPosition(
   snapToLayersEnabled: boolean = true,
   threshold: number = DEFAULT_SNAP_THRESHOLD
 ): SnapResult {
-  let result: SnapResult = { x, y, snappedX: false, snappedY: false };
+  const result: SnapResult = { x, y, snappedX: false, snappedY: false };
 
   // 先进行图层吸附（优先级更高）
   if (snapToLayersEnabled && otherLayers.length > 0) {
