@@ -41,6 +41,7 @@ export const createDocumentSlice = (set: any, get: any): DocumentSlice => ({
   canUndo: false,
   canRedo: false,
 
+  // 加载新文档：必须先取消pending的图层补丁防抖，防止旧文档的timer破坏新文档历史
   setDocument: (payload) => {
     cancelPendingLayerPatch();
     initHistory(payload.content, []);
@@ -85,6 +86,7 @@ export const createDocumentSlice = (set: any, get: any): DocumentSlice => ({
   markDirty: () => set({ isDirty: true }),
   setSaving: (saving) => set({ saving }),
 
+  // 重置状态：同样需要取消pending的防抖操作
   reset: () => {
     cancelPendingLayerPatch();
     return set({

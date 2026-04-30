@@ -90,6 +90,7 @@ public class AssetController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(content.mimeType()));
         headers.setContentLength(content.size());
+        // 对文件名进行URL编码，使用RFC 5987标准防止Content-Disposition头注入
         String encodedFilename = URLEncoder.encode(content.filename(), StandardCharsets.UTF_8).replace("+", "%20");
         headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedFilename);
         return ResponseEntity.ok()
@@ -105,6 +106,7 @@ public class AssetController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(content.mimeType()));
         headers.setContentLength(content.size());
+        // 缩略图同样需要对文件名做URL编码，防止header注入攻击
         String encodedThumbFilename = URLEncoder.encode(content.filename(), StandardCharsets.UTF_8).replace("+", "%20");
         headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedThumbFilename);
         return ResponseEntity.ok()

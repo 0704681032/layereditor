@@ -44,6 +44,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
     }
 
+    // AI处理异常：单独捕获AiProcessingException，返回特定错误码，避免被通用Exception处理器吞掉上下文信息
     @ExceptionHandler(AiImageService.AiProcessingException.class)
     public ResponseEntity<ApiResponse<Void>> handleAiProcessing(AiImageService.AiProcessingException e) {
         log.error("AI processing failed: {}", e.getMessage(), e);
@@ -58,6 +59,7 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(40001, e.getMessage()));
     }
 
+    // 兜底异常处理：捕获所有未被上方handler匹配的异常，返回通用500错误
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneric(Exception e) {
         log.error("Unhandled exception: {}", e.getMessage(), e);

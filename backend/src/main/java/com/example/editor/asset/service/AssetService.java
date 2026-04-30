@@ -358,6 +358,10 @@ public class AssetService {
     /**
      * Get thumbnail content if exists.
      */
+    /**
+     * 获取缩略图内容，支持按需生成。
+     * size参数限制在50-1000范围内，防止恶意请求生成超大缩略图消耗服务器资源。
+     */
     public FileContent getThumbnail(Long id, int size) {
         if (size < 50 || size > 1000) {
             throw new IllegalArgumentException("Thumbnail size must be between 50 and 1000");
@@ -563,7 +567,7 @@ public class AssetService {
                 thumbWidth = (int) ((double) width / height * targetSize);
             }
 
-            // Create thumbnail
+            // 创建缩略图，使用try-finally确保Graphics2D资源被释放，防止native内存泄漏
             BufferedImage thumbnail = new BufferedImage(thumbWidth, thumbHeight, BufferedImage.TYPE_INT_RGB);
             Graphics2D g2d = thumbnail.createGraphics();
             try {
@@ -647,7 +651,7 @@ public class AssetService {
                 throw new IllegalArgumentException("Cannot read image file");
             }
 
-            // Create watermarked image
+            // 创建水印图像，使用try-finally确保Graphics2D资源释放
             BufferedImage watermarked = new BufferedImage(original.getWidth(), original.getHeight(), BufferedImage.TYPE_INT_RGB);
             Graphics2D g2d = watermarked.createGraphics();
             try {

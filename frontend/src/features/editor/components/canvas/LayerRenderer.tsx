@@ -460,11 +460,13 @@ const TextComponent: FC<{ layer: TextLayer }> = memo(({ layer }) => {
         input.focus();
         input.select();
 
+        // editing标志防止Escape键和blur事件双重触发finishEdit
         let editing = true;
         const finishEdit = () => {
-          if (!editing) return;
+          if (!editing) return; // 已经完成编辑，防止重复执行
           editing = false;
           const newText = input.value;
+          // 先移除blur监听，再移除DOM元素，避免remove触发blur再次进入
           input.removeEventListener('blur', finishEdit);
           input.remove();
           if (newText !== layer.text) {
@@ -475,7 +477,7 @@ const TextComponent: FC<{ layer: TextLayer }> = memo(({ layer }) => {
         input.addEventListener('blur', finishEdit);
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); finishEdit(); }
-          if (e.key === 'Escape') { finishEdit(); }
+          if (e.key === 'Escape') { finishEdit(); } // 统一走finishEdit，避免绕过guard
           e.stopPropagation();
         });
       }}
@@ -496,6 +498,7 @@ const ImageComponent: FC<{ layer: ImageLayer }> = memo(({ layer }) => {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const renderedImage = imageUrl ? image : null;
 
+  // 加载图片资源，cleanup时清除回调和src防止内存泄漏
   useEffect(() => {
     if (!imageUrl) return;
     const img = new window.Image();
@@ -503,6 +506,7 @@ const ImageComponent: FC<{ layer: ImageLayer }> = memo(({ layer }) => {
     img.onload = () => { setImage(img); };
     img.onerror = () => { setImage(null); };
     img.src = imageUrl;
+    // 清除引用：重置回调、清空src释放底层图片资源
     return () => { img.onload = null; img.onerror = null; img.src = ''; };
   }, [imageUrl]);
 
@@ -581,6 +585,8 @@ const ComplexSvgImage: FC<{
 
   const [image, setImage] = useState<HTMLImageElement | null>(null);
 
+  // 将复杂SVG渲染为位图：创建Blob URL -> 加载到Image -> Konva渲染
+  // cleanup时释放Object URL和底层图片资源，防止内存泄漏
   useEffect(() => {
     const img = new window.Image();
     img.onload = () => { setImage(img); };

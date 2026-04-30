@@ -40,13 +40,19 @@ export interface LayerActions {
 
 export type LayerSlice = LayerActions;
 
+// 每次修改图层后重置历史状态：新操作后可撤销、不可重做
 const syncHistoryState = () => ({
   canUndo: true,
   canRedo: false,
 });
 
+// 防抖计时器：用于updateLayerPatchDebounced的延迟历史记录
 let patchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * 取消待执行的图层补丁防抖操作
+ * 必须在文档切换或重置时调用，否则pending的setTimeout会破坏新文档的撤销历史
+ */
 export function cancelPendingLayerPatch() {
   if (patchDebounceTimer) {
     clearTimeout(patchDebounceTimer);
@@ -100,6 +106,8 @@ export const createLayerSlice = (set: any, get: any): LayerSlice => ({
       };
     }),
 
+  // 防抖更新：立即更新视图（低延迟拖拽体验），延迟300ms写入撤销历史
+  // 避免拖拽过程中每个像素移动都产生一条历史记录
   updateLayerPatchDebounced: (layerId: string, patch: Partial<EditorLayer>) => {
     set((state: any) => {
       if (!state.content) return state;
