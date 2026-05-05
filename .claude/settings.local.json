@@ -173,7 +173,8 @@
       "Bash(/d/PostgreSQL/pgsql/bin/pg_ctl.exe stop *)",
       "Bash(awk '{print $5}')",
       "Bash(xargs -I{} taskkill //F //PID {})",
-      "Bash(grep -oP '\\\\$\\\\.post\\\\\\([^;]+')"
+      "Bash(grep -oP '\\\\$\\\\.post\\\\\\([^;]+')",
+      "Bash(git fetch *)"
     ]
   }
 }
