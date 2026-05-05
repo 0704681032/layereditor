@@ -3,11 +3,30 @@
 # 自动检测：JDK 21、PostgreSQL、数据库、前端依赖
 # 使用方法：bash start.sh
 
+# ========== Shell 选项配置 ==========
+# set -e: Exit immediately 模式
+#   - 任何命令返回非零退出码（失败）时，脚本立即终止
+#   - 防止在错误状态下继续执行后续命令，避免级联错误
+#   - 例如：如果 check_java 失败，脚本不会继续执行 check_postgres
+#   - 这是脚本安全编程的最佳实践
 set -e
 
+# ========== 获取脚本所在目录的绝对路径 ==========
+# $0: 当前脚本的路径（可能是相对路径如 ./start.sh 或绝对路径）
+# dirname "$0": 提取脚本的目录部分（去掉文件名），例如 ./start.sh → .
+# cd ... && pwd: 先切换到该目录，再获取绝对路径
+# 组合效果: 无论从哪里运行脚本，都能得到脚本所在的真实绝对路径
+#   例如: 从 /Users/jyy/project 运行 bash ./start.sh
+#     $0 = "./start.sh", dirname = ".", cd + pwd = "/Users/jyy/project"
+# 好处: 后续引用 $SCRIPT_DIR/.env、$SCRIPT_DIR/frontend 等都能正确工作
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # 加载 .env 文件
+# set -a: Allexport 模式（自动导出变量）
+#   - 在 source .env 之前开启，使 .env 中定义的所有变量自动导出为环境变量
+#   - 这样子进程（如 mvn、npm）也能访问这些变量
+#   - 例如：.env 中定义 DB_PASSWORD=xxx，开启 set -a 后自动变为 export DB_PASSWORD=xxx
+#   - source 后用 set +a 关闭，避免后续脚本中意外导出局部变量
 if [ -f "$SCRIPT_DIR/.env" ]; then
     set -a; source "$SCRIPT_DIR/.env"; set +a
 fi
