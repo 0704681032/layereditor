@@ -161,7 +161,19 @@
       "Bash(taskkill *)",
       "Bash(git commit *)",
       "Bash(claude mcp *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(mvn spring-boot:run -Dspring-boot.run.profiles=windows -DskipTests)",
+      "Bash(D:/PostgreSQL/pgsql/bin/pg_isready.exe *)",
+      "Bash(tasklist *)",
+      "Bash(D:/PostgreSQL/pgsql/bin/pg_ctl.exe status *)",
+      "Bash(\"D:/PostgreSQL/pgsql/bin/psql.exe\" -U postgres -p 5432 -c \"\\\\\\\\l\")",
+      "Bash(pkill -f \"spring-boot:run\")",
+      "Bash(bash start.sh)",
+      "Bash(\"D:/Program Files \\(x86\\)/Java/jdk-21/bin/java.exe\" -version)",
+      "Bash(/d/PostgreSQL/pgsql/bin/pg_ctl.exe stop *)",
+      "Bash(awk '{print $5}')",
+      "Bash(xargs -I{} taskkill //F //PID {})",
+      "Bash(grep -oP '\\\\$\\\\.post\\\\\\([^;]+')"
     ]
   }
 }
