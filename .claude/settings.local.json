@@ -174,7 +174,8 @@
       "Bash(awk '{print $5}')",
       "Bash(xargs -I{} taskkill //F //PID {})",
       "Bash(grep -oP '\\\\$\\\\.post\\\\\\([^;]+')",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(npx @anthropic-ai/chrome-devtools-mcp@latest --help)"
     ]
   }
 }
