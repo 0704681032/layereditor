@@ -21,44 +21,23 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
-/**
- * SVG sanitizer that strips dangerous elements and attributes
- * to prevent XSS and other security vulnerabilities.
- *
- * <p>This sanitizer uses a fail-closed approach: any SVG that fails to parse
- * is rejected with an exception rather than silently replaced.</p>
- */
 public final class SvgSanitizer {
 
     private SvgSanitizer() {}
 
-    // Dangerous elements that should be completely removed
     private static final Set<String> DANGEROUS_ELEMENTS = Set.of(
             "script", "iframe", "object", "embed", "applet",
             "form", "input", "button", "textarea", "select",
-            "link", "meta", "base", "noscript"
+            "link", "meta", "base", "noscript",
+            "use", "foreignobject", "image"
     );
 
-    // Patterns for dangerous CSS values in style attributes
-    // expression() — IE CSS expression injection
-    // url(javascript:...) — CSS-based JS execution
-    // url(data:text/html...) — CSS-based HTML injection
-    // -moz-binding — Firefox XBL injection
-    // @import — CSS import of external resources
-    // behavior: — IE HTC behavior
     private static final Pattern DANGEROUS_CSS_PATTERN = Pattern.compile(
             "(?i)(expression\\s*\\(|url\\s*\\(\\s*['\"]?\\s*javascript:|" +
             "url\\s*\\(\\s*['\"]?\\s*data\\s*:\\s*text/html|" +
             "-moz-binding|@import|behavior\\s*:)"
     );
 
-    /**
-     * Sanitize SVG content by removing dangerous elements and attributes.
-     *
-     * @param svgData Raw SVG string
-     * @return Sanitized SVG string safe for storage and rendering
-     * @throws IllegalArgumentException if the SVG fails to parse (fail-closed)
-     */
     public static String sanitize(String svgData) {
         if (svgData == null || svgData.isBlank()) {
             return svgData;
@@ -67,12 +46,12 @@ public final class SvgSanitizer {
         try {
             var factory = DocumentBuilderFactory.newInstance();
             factory.setNamespaceAware(true);
-            // Disable external entities to prevent XXE
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
             factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
             factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
 
             var builder = factory.newDocumentBuilder();
             Document document = builder.parse(new InputSource(
@@ -84,18 +63,26 @@ public final class SvgSanitizer {
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            // Fail-closed: reject malformed SVG instead of returning a safe placeholder
             throw new IllegalArgumentException("Invalid SVG content: failed to parse", e);
         }
     }
 
     private static void cleanNode(Element element) {
-        String tagName = element.getTagName().toLowerCase();
         String localName = element.getLocalName() != null
-                ? element.getLocalName().toLowerCase() : tagName;
+                ? element.getLocalName().toLowerCase() : element.getTagName().toLowerCase();
 
-        // Remove dangerous elements entirely
-        if (DANGEROUS_ELEMENTS.contains(localName) || DANGEROUS_ELEMENTS.contains(tagName)) {
+        if (DANGEROUS_ELEMENTS.contains(localName)) {
+            // Allow <use> and <image> only with same-document references (#id)
+            if ("use".equals(localName) || "image".equals(localName)) {
+                String href = element.getAttribute("href");
+                String xlinkHref = element.getAttribute("xlink:href");
+                if ((href.isEmpty() || href.startsWith("#")) &&
+                    (xlinkHref.isEmpty() || xlinkHref.startsWith("#"))) {
+                    cleanAttributes(element);
+                    cleanChildren(element);
+                    return;
+                }
+            }
             Node parent = element.getParentNode();
             if (parent != null) {
                 parent.removeChild(element);
@@ -103,7 +90,11 @@ public final class SvgSanitizer {
             return;
         }
 
-        // Clean attributes
+        cleanAttributes(element);
+        cleanChildren(element);
+    }
+
+    private static void cleanAttributes(Element element) {
         var attrsToRemove = new ArrayList<Attr>();
         var attributes = element.getAttributes();
         for (int i = 0; i < attributes.getLength(); i++) {
@@ -116,15 +107,14 @@ public final class SvgSanitizer {
             element.removeAttributeNode(attr);
         }
 
-        // Sanitize style attribute value if present and not already removed
         Attr styleAttr = element.getAttributeNode("style");
         if (styleAttr != null && containsDangerousCss(styleAttr.getValue())) {
             element.removeAttributeNode(styleAttr);
         }
+    }
 
-        // Recursively clean children
+    private static void cleanChildren(Element element) {
         NodeList children = element.getChildNodes();
-        // Collect elements to process first to avoid concurrent modification
         var childElements = new ArrayList<Element>();
         for (int i = 0; i < children.getLength(); i++) {
             Node child = children.item(i);
@@ -141,19 +131,16 @@ public final class SvgSanitizer {
         String name = attr.getName().toLowerCase();
         String value = attr.getValue().trim().toLowerCase();
 
-        // Event handler attributes (onclick, onload, onerror, etc.)
         if (name.startsWith("on")) {
             return true;
         }
 
-        // xlink:href or href with javascript: or data:text/html
         if (name.equals("href") || name.equals("xlink:href")) {
-            if (value.startsWith("javascript:") || value.startsWith("data:text/html")) {
+            if (value.startsWith("javascript:") || value.startsWith("data:text/html") || value.startsWith("data:image/svg+xml")) {
                 return true;
             }
         }
 
-        // formaction, formtarget, etc.
         if (name.startsWith("form")) {
             return true;
         }
@@ -161,9 +148,6 @@ public final class SvgSanitizer {
         return false;
     }
 
-    /**
-     * Check if a CSS style value contains dangerous patterns.
-     */
     private static boolean containsDangerousCss(String styleValue) {
         if (styleValue == null || styleValue.isBlank()) {
             return false;
@@ -173,6 +157,7 @@ public final class SvgSanitizer {
 
     private static String documentToString(Document document) throws Exception {
         TransformerFactory tf = TransformerFactory.newInstance();
+        tf.setFeature("http://javax.xml.XMLConstants/feature/secure-processing", true);
         Transformer transformer = tf.newTransformer();
         transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
         transformer.setOutputProperty(OutputKeys.METHOD, "xml");

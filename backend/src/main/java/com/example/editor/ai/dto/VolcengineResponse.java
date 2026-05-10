@@ -3,19 +3,10 @@ package com.example.editor.ai.dto;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
-/**
- * Base response from Volcengine API
- */
 @Data
 public class VolcengineResponse {
-    /**
-     * Response metadata (contains requestId, error info etc.)
-     */
-    private ResponseMetadata ResponseMetadata;
 
-    /**
-     * Result data
-     */
+    private ResponseMetadata ResponseMetadata;
     private ResultData Result;
 
     @Data
@@ -42,26 +33,18 @@ public class VolcengineResponse {
         private Integer height;
     }
 
-    /**
-     * Check if response has error
-     */
     public boolean hasError() {
         return ResponseMetadata != null && ResponseMetadata.Error != null;
     }
 
-    /**
-     * Get error message
-     */
     public String getErrorMessage() {
         if (hasError()) {
-            return ResponseMetadata.Error.Code + ": " + ResponseMetadata.Error.Message;
+            return String.valueOf(ResponseMetadata.Error.Code) + ": " +
+                   String.valueOf(ResponseMetadata.Error.Message);
         }
         return null;
     }
 
-    /**
-     * Get result image base64
-     */
     public String getResultImageBase64() {
         if (Result == null) {
             return null;

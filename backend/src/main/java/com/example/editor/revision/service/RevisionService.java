@@ -1,6 +1,7 @@
 package com.example.editor.revision.service;
 
 import com.example.editor.common.exception.NotFoundException;
+import com.example.editor.common.security.UserContext;
 import com.example.editor.document.entity.EditorDocument;
 import com.example.editor.document.service.DocumentService;
 import com.example.editor.revision.dto.CreateRevisionRequest;
@@ -11,6 +12,7 @@ import com.example.editor.revision.mapper.RevisionMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,19 +20,25 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RevisionService {
 
     private final RevisionMapper revisionMapper;
     private final DocumentService documentService;
     private final ObjectMapper objectMapper;
 
-    private static final Long DEFAULT_USER_ID = 1L;
+    private static final int MAX_REVISIONS_PER_LIST = 100;
+
+    private Long userId() {
+        return UserContext.getCurrentUserId();
+    }
 
     @Transactional
     public RevisionResponse createRevision(Long documentId, CreateRevisionRequest request) {
         EditorDocument doc = documentService.findOrThrow(documentId);
 
-        // Auto-increment version_no based on existing revisions
+        // Acquire advisory lock to prevent race condition on version number
+        revisionMapper.acquireDocumentLock(documentId);
         Integer maxVersion = revisionMapper.selectMaxVersionNo(documentId);
         int nextVersionNo = (maxVersion != null ? maxVersion : 0) + 1;
 
@@ -39,7 +47,7 @@ public class RevisionService {
         revision.setVersionNo(nextVersionNo);
         revision.setSnapshot(doc.getContent());
         revision.setMessage(request.message());
-        revision.setCreatedBy(DEFAULT_USER_ID);
+        revision.setCreatedBy(userId());
         revisionMapper.insert(revision);
 
         return new RevisionResponse(
@@ -50,6 +58,7 @@ public class RevisionService {
     public List<RevisionResponse> listRevisions(Long documentId) {
         documentService.findOrThrow(documentId);
         return revisionMapper.selectByDocumentId(documentId).stream()
+                .limit(MAX_REVISIONS_PER_LIST)
                 .map(r -> new RevisionResponse(
                         r.getId(), r.getDocumentId(),
                         r.getVersionNo(), r.getMessage(), r.getCreatedAt()))
@@ -67,7 +76,10 @@ public class RevisionService {
 
     @Transactional
     public RevisionResponse restoreRevision(Long documentId, int versionNo) {
-        EditorDocument doc = documentService.findOrThrow(documentId);
+        if (versionNo <= 0) {
+            throw new IllegalArgumentException("Invalid version number");
+        }
+        documentService.findOrThrow(documentId);
 
         EditorDocumentRevision revision = revisionMapper.selectByDocumentIdAndVersion(documentId, versionNo);
         if (revision == null) {
@@ -89,7 +101,7 @@ public class RevisionService {
                     revision.getVersionNo(), snapshotNode,
                     revision.getMessage(), revision.getCreatedAt());
         } catch (Exception e) {
-            throw new RuntimeException("Failed to parse revision snapshot", e);
+            throw new IllegalStateException("Failed to parse revision snapshot", e);
         }
     }
 }

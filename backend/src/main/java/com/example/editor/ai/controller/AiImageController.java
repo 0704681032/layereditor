@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Base64;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/ai/image")
@@ -22,124 +23,91 @@ public class AiImageController {
 
     private final AiImageService aiImageService;
 
-    /**
-     * Maximum image data size: 10MB (Base64 encoded ~13.3MB chars)
-     */
     private static final int MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+    private static final Set<String> VALID_DIRECTIONS = Set.of("top", "bottom", "left", "right", "all");
+    private static final int MAX_PIXELS = 1024;
 
-    /**
-     * Check AI API status - whether Volcengine credentials are configured
-     */
     @GetMapping("/status")
     public ApiResponse<AiStatusResponse> status() {
         AiStatusResponse response = aiImageService.getStatus();
         return ApiResponse.ok(response);
     }
 
-    /**
-     * Image matting (background removal)
-     * Input: image URL or base64 data
-     * Output: processed image with transparent background (base64)
-     */
     @PostMapping("/matting")
     public ApiResponse<AiImageResponse> matting(@RequestBody MattingRequest request) {
         log.info("Matting request received, type: {}, dataSize: {} chars",
             request.getType(), request.getImageData() != null ? request.getImageData().length() : 0);
 
-        validateAndDecodeImage(request.getImageData());
-
-        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
+        byte[] imageBytes = validateAndDecodeImage(request.getImageData());
         byte[] result = aiImageService.matting(imageBytes, request.getType());
 
         return buildSuccessResponse(result, request.getWidth(), request.getHeight());
     }
 
-    /**
-     * Image outpainting (expand image boundaries)
-     * Input: image data, direction, and pixels to expand
-     * Output: expanded image (base64)
-     */
     @PostMapping("/outpainting")
     public ApiResponse<AiImageResponse> outpainting(@RequestBody OutpaintingRequest request) {
         log.info("Outpainting request received, direction: {}, pixels: {}, dataSize: {} chars",
             request.getDirection(), request.getPixels(),
             request.getImageData() != null ? request.getImageData().length() : 0);
 
-        validateAndDecodeImage(request.getImageData());
+        byte[] imageBytes = validateAndDecodeImage(request.getImageData());
+        String direction = request.getDirection() != null ? request.getDirection() : "all";
+        int pixels = request.getPixels() != null ? request.getPixels() : 100;
 
-        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
-        byte[] result = aiImageService.outpainting(imageBytes, request.getDirection(), request.getPixels());
+        if (!VALID_DIRECTIONS.contains(direction)) {
+            throw new IllegalArgumentException("Invalid direction: must be one of " + VALID_DIRECTIONS);
+        }
+        if (pixels <= 0 || pixels > MAX_PIXELS) {
+            throw new IllegalArgumentException("Pixels must be between 1 and " + MAX_PIXELS);
+        }
 
+        byte[] result = aiImageService.outpainting(imageBytes, direction, pixels);
         return buildSuccessResponse(result, null, null);
     }
 
-    /**
-     * Image inpainting (remove objects/fill areas)
-     * Input: image data and mask data (white areas to remove)
-     * Output: inpainted image (base64)
-     */
     @PostMapping("/inpainting")
     public ApiResponse<AiImageResponse> inpainting(@RequestBody InpaintingRequest request) {
         log.info("Inpainting request received, imageSize: {} chars, maskSize: {} chars",
             request.getImageData() != null ? request.getImageData().length() : 0,
             request.getMaskData() != null ? request.getMaskData().length() : 0);
 
-        validateAndDecodeImage(request.getImageData());
-        validateAndDecodeImage(request.getMaskData());
-
-        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
-        byte[] maskBytes = extractAndDecodeBase64(request.getMaskData());
+        byte[] imageBytes = validateAndDecodeImage(request.getImageData());
+        byte[] maskBytes = validateAndDecodeImage(request.getMaskData());
         byte[] result = aiImageService.inpainting(imageBytes, maskBytes);
 
         return buildSuccessResponse(result, null, null);
     }
 
-    /**
-     * Image super resolution - enhance image quality/resolution
-     * Input: image data and scale factor
-     * Output: enhanced image (base64)
-     */
     @PostMapping("/super-resolution")
     public ApiResponse<AiImageResponse> superResolution(@RequestBody SuperResolutionRequest request) {
         log.info("Super Resolution request received, scale: {}, dataSize: {} chars",
             request.getScale(), request.getImageData() != null ? request.getImageData().length() : 0);
 
-        validateAndDecodeImage(request.getImageData());
-
+        byte[] imageBytes = validateAndDecodeImage(request.getImageData());
         int scale = validateScale(request.getScale());
-
-        byte[] imageBytes = extractAndDecodeBase64(request.getImageData());
         byte[] result = aiImageService.superResolution(imageBytes, scale);
 
         return buildSuccessResponse(result, null, null);
     }
 
-    /**
-     * Validate image data is present and within size limit
-     */
-    private void validateAndDecodeImage(String imageData) {
+    private byte[] validateAndDecodeImage(String imageData) {
         if (imageData == null || imageData.isEmpty()) {
             throw new IllegalArgumentException("imageData is required");
         }
         if (imageData.length() > MAX_IMAGE_SIZE) {
             throw new IllegalArgumentException("Image data too large (max 10MB)");
         }
-    }
-
-    /**
-     * Extract base64 data from data:image prefix if present, then decode
-     */
-    private byte[] extractAndDecodeBase64(String imageData) {
         String base64Data = imageData;
         if (base64Data.contains(",")) {
             base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
         }
-        return Base64.getDecoder().decode(base64Data);
+        try {
+            return Base64.getDecoder().decode(base64Data);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid base64 image data");
+        }
     }
 
-    /**
-     * Validate scale parameter
-     */
     private int validateScale(Integer scale) {
         if (scale == null) return 2;
         if (scale != 2 && scale != 4) {
@@ -149,9 +117,6 @@ public class AiImageController {
         return scale;
     }
 
-    /**
-     * Build success response with base64 result
-     */
     private ApiResponse<AiImageResponse> buildSuccessResponse(byte[] result, Integer width, Integer height) {
         String base64Result = Base64.getEncoder().encodeToString(result);
         AiImageResponse response = new AiImageResponse();

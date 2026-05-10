@@ -4,39 +4,29 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-/**
- * Validates and sanitizes document content JSON,
- * including sanitizing SVG data in svg layers.
- */
+import java.nio.charset.StandardCharsets;
+
 public final class ContentValidator {
 
     private ContentValidator() {}
 
-    // Maximum content JSON string size: 10MB
     private static final int MAX_CONTENT_SIZE = 10 * 1024 * 1024;
 
-    // Maximum SVG string size per layer: 2MB
     private static final int MAX_SVG_SIZE = 2 * 1024 * 1024;
 
-    // Maximum number of layers
     private static final int MAX_LAYERS = 500;
 
-    // Maximum text content length per text layer
     private static final int MAX_TEXT_LENGTH = 50000;
 
-    /**
-     * Validate and sanitize document content.
-     *
-     * @param content The JSON content node
-     * @return Sanitized content node
-     * @throws IllegalArgumentException if content is invalid
-     */
+    private static final java.util.Set<String> VALID_LAYER_TYPES = java.util.Set.of(
+            "image", "svg", "text", "group", "shape", "rect", "ellipse", "line"
+    );
+
     public static JsonNode validateAndSanitize(JsonNode content) {
         if (content == null) {
             throw new IllegalArgumentException("Content cannot be null");
         }
 
-        // Validate structure
         if (!content.has("canvas") || !content.has("layers")) {
             throw new IllegalArgumentException("Content must have 'canvas' and 'layers' fields");
         }
@@ -61,20 +51,20 @@ public final class ContentValidator {
             throw new IllegalArgumentException("Too many layers (max " + MAX_LAYERS + ")");
         }
 
-        // Sanitize SVG data in layers
+        // Validate content size in bytes
+        validateContentSize(content.toString());
+
         sanitizeLayers((ArrayNode) layers);
 
         return content;
     }
 
-    /**
-     * Validate content size as a string.
-     */
     public static void validateContentSize(String contentStr) {
         if (contentStr == null) {
             throw new IllegalArgumentException("Content cannot be null");
         }
-        if (contentStr.length() > MAX_CONTENT_SIZE) {
+        int byteSize = contentStr.getBytes(StandardCharsets.UTF_8).length;
+        if (byteSize > MAX_CONTENT_SIZE) {
             throw new IllegalArgumentException("Content too large (max " + (MAX_CONTENT_SIZE / 1024 / 1024) + "MB)");
         }
     }
@@ -91,7 +81,10 @@ public final class ContentValidator {
     private static void sanitizeLayer(ObjectNode layer) {
         String type = layer.has("type") ? layer.get("type").asText() : "";
 
-        // Sanitize SVG layers
+        if (!VALID_LAYER_TYPES.contains(type)) {
+            throw new IllegalArgumentException("Invalid layer type: " + type);
+        }
+
         if ("svg".equals(type) && layer.has("svgData")) {
             String svgData = layer.get("svgData").asText();
             if (svgData != null) {
@@ -103,7 +96,6 @@ public final class ContentValidator {
             }
         }
 
-        // Validate text layers
         if ("text".equals(type) && layer.has("text")) {
             String text = layer.get("text").asText();
             if (text != null && text.length() > MAX_TEXT_LENGTH) {
@@ -111,7 +103,6 @@ public final class ContentValidator {
             }
         }
 
-        // Recursively sanitize children in group layers
         if ("group".equals(type) && layer.has("children") && layer.get("children").isArray()) {
             sanitizeLayers((ArrayNode) layer.get("children"));
         }

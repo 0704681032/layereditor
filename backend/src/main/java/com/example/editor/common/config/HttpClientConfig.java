@@ -11,16 +11,13 @@ import org.apache.hc.core5.util.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-/**
- * HTTP Client configuration for OpenFeign with connection pooling
- */
 @Configuration
 @RequiredArgsConstructor
 public class HttpClientConfig {
 
     private final HttpClientProperties properties;
 
-    @Bean
+    @Bean(destroyMethod = "close")
     public PoolingHttpClientConnectionManager poolingConnectionManager() {
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(properties.getMaxConnections());
@@ -28,7 +25,7 @@ public class HttpClientConfig {
         return connectionManager;
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
     public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager connectionManager) {
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectionRequestTimeout(Timeout.ofMilliseconds(properties.getConnectionTimeout()))

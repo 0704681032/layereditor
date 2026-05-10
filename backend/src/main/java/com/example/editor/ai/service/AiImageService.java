@@ -7,20 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.net.InetAddress;
+import java.net.URI;
 import java.util.Base64;
-import java.util.Set;
 
-/**
- * Service for calling Volcengine (ByteDance) Visual Intelligence APIs using OpenFeign
- *
- * API Documentation: https://www.volcengine.com/docs/6791/1347773
- *
- * Supported operations:
- * - Matting (background removal): SegmentImage / SegmentHumanBody
- * - Outpainting (image expansion): ImageOutpainting
- * - Inpainting (object removal): ImageInpainting
- * - Super Resolution (image enhancement): ImageSuperResolution
- */
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -29,20 +19,6 @@ public class AiImageService {
     private final VolcengineVisualClient volcengineClient;
     private final VolcengineProperties properties;
 
-    /**
-     * Blocked URL patterns for SSRF protection
-     */
-    private static final Set<String> BLOCKED_URL_PATTERNS = Set.of(
-        "localhost", "127.0.0.1", "0.0.0.0",
-        "10.", "192.168.", "172.16.", "172.17.", "172.18.", "172.19.",
-        "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
-        "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
-        "::1", "0:0:0:0:0:0:0:1", "fc00:", "fd00:"
-    );
-
-    /**
-     * Check if API credentials are configured
-     */
     private void checkCredentials() {
         if (!properties.isConfigured()) {
             throw new IllegalStateException(
@@ -51,9 +27,6 @@ public class AiImageService {
         }
     }
 
-    /**
-     * Get AI API status - check if credentials are configured
-     */
     public AiStatusResponse getStatus() {
         boolean configured = properties.isConfigured();
 
@@ -68,13 +41,6 @@ public class AiImageService {
         return new AiStatusResponse(configured, "ByteDance Volcengine", features, message);
     }
 
-    /**
-     * Image matting - remove background and extract subject
-     *
-     * @param imageBytes original image bytes
-     * @param type matting type: 'human' for portrait, 'general' for objects
-     * @return processed image bytes with transparent background
-     */
     public byte[] matting(byte[] imageBytes, String type) {
         checkCredentials();
 
@@ -94,7 +60,6 @@ public class AiImageService {
             return decodeResultImage(response);
 
         } catch (IllegalStateException | IllegalArgumentException e) {
-            // Re-throw business exceptions directly
             throw e;
         } catch (Exception e) {
             log.error("Matting API call failed: {}", e.getMessage());
@@ -102,13 +67,6 @@ public class AiImageService {
         }
     }
 
-    /**
-     * Alternative matting method using image URL
-     *
-     * @param imageUrl URL of the image to process
-     * @param type matting type: 'human' for portrait, 'general' for objects
-     * @return processed image bytes
-     */
     public byte[] mattingFromUrl(String imageUrl, String type) {
         checkCredentials();
         validateImageUrl(imageUrl);
@@ -134,14 +92,6 @@ public class AiImageService {
         }
     }
 
-    /**
-     * Image outpainting - expand image boundaries
-     *
-     * @param imageBytes original image bytes
-     * @param direction expansion direction: top, bottom, left, right, all
-     * @param pixels number of pixels to expand
-     * @return expanded image bytes
-     */
     public byte[] outpainting(byte[] imageBytes, String direction, int pixels) {
         checkCredentials();
 
@@ -169,13 +119,6 @@ public class AiImageService {
         }
     }
 
-    /**
-     * Image inpainting - remove objects and fill areas
-     *
-     * @param imageBytes original image bytes
-     * @param maskBytes mask image bytes (white areas to remove)
-     * @return inpainted image bytes
-     */
     public byte[] inpainting(byte[] imageBytes, byte[] maskBytes) {
         checkCredentials();
 
@@ -201,13 +144,6 @@ public class AiImageService {
         }
     }
 
-    /**
-     * Image super resolution - enhance image quality/resolution
-     *
-     * @param imageBytes original image bytes
-     * @param scale resolution scale factor (2x, 4x)
-     * @return enhanced image bytes
-     */
     public byte[] superResolution(byte[] imageBytes, int scale) {
         checkCredentials();
 
@@ -233,53 +169,54 @@ public class AiImageService {
     }
 
     /**
-     * Validate image URL for SSRF protection
+     * SSRF protection using DNS resolution and IP address validation.
      */
     private void validateImageUrl(String imageUrl) {
         if (imageUrl == null || imageUrl.isEmpty()) {
             throw new IllegalArgumentException("imageUrl is required");
         }
 
-        // Only allow HTTP/HTTPS
         if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
             throw new IllegalArgumentException("imageUrl must be HTTP or HTTPS protocol");
         }
 
-        // Extract host from URL
-        String host = extractHost(imageUrl);
+        try {
+            URI uri = new URI(imageUrl);
+            String host = uri.getHost();
+            if (host == null || host.isEmpty()) {
+                throw new IllegalArgumentException("Invalid URL: missing host");
+            }
 
-        // Check against blocked patterns
-        for (String blocked : BLOCKED_URL_PATTERNS) {
-            if (host.equalsIgnoreCase(blocked) || host.startsWith(blocked)) {
-                log.warn("Blocked SSRF attempt to private network: {}", host);
+            InetAddress address = InetAddress.getByName(host);
+
+            if (address.isLoopbackAddress() || address.isSiteLocalAddress() ||
+                address.isLinkLocalAddress() || address.isAnyLocalAddress()) {
+                log.warn("Blocked SSRF attempt to private network: {} -> {}", host, address);
                 throw new IllegalArgumentException("Access to private network URLs is not allowed");
             }
-        }
-    }
 
-    /**
-     * Extract host from URL
-     */
-    private String extractHost(String url) {
-        try {
-            // Remove protocol
-            String afterProtocol = url.replace("https://", "").replace("http://", "");
-            // Extract host (before first / or :)
-            int slashIndex = afterProtocol.indexOf('/');
-            int colonIndex = afterProtocol.indexOf(':');
-            int endIndex = Math.min(
-                slashIndex >= 0 ? slashIndex : afterProtocol.length(),
-                colonIndex >= 0 ? colonIndex : afterProtocol.length()
-            );
-            return afterProtocol.substring(0, endIndex).toLowerCase();
+            byte[] bytes = address.getAddress();
+            if (bytes.length == 4) {
+                int first = bytes[0] & 0xFF;
+                int second = bytes[1] & 0xFF;
+                // 100.64.0.0/10 (Carrier-grade NAT, RFC 6598)
+                if (first == 100 && second >= 64 && second <= 127) {
+                    log.warn("Blocked SSRF attempt to CGNAT range: {} -> {}", host, address);
+                    throw new IllegalArgumentException("Access to private network URLs is not allowed");
+                }
+                // 169.254.0.0/16 (link-local)
+                if (first == 169 && second == 254) {
+                    log.warn("Blocked SSRF attempt to link-local: {} -> {}", host, address);
+                    throw new IllegalArgumentException("Access to private network URLs is not allowed");
+                }
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            return "";
+            throw new IllegalArgumentException("Invalid URL: " + e.getMessage());
         }
     }
 
-    /**
-     * Validate API response
-     */
     private void validateResponse(VolcengineResponse response, String operation) {
         if (response == null) {
             throw new IllegalStateException(operation + " API returned null response");
@@ -287,13 +224,10 @@ public class AiImageService {
         if (response.hasError()) {
             String errorMsg = response.getErrorMessage();
             log.error("{} API error: {}", operation, errorMsg);
-            throw new IllegalArgumentException(operation + " failed: " + errorMsg);
+            throw new IllegalArgumentException(operation + " failed");
         }
     }
 
-    /**
-     * Decode result image from response
-     */
     private byte[] decodeResultImage(VolcengineResponse response) {
         String resultBase64 = response.getResultImageBase64();
         if (resultBase64 == null || resultBase64.isEmpty()) {
@@ -302,9 +236,6 @@ public class AiImageService {
         return Base64.getDecoder().decode(resultBase64);
     }
 
-    /**
-     * Custom exception for AI processing failures
-     */
     public static class AiProcessingException extends RuntimeException {
         public AiProcessingException(String message, Throwable cause) {
             super(message, cause);

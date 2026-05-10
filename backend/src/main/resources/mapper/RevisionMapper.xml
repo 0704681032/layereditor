@@ -31,4 +31,12 @@
         SELECT MAX(version_no) FROM editor_document_revision WHERE document_id = #{documentId}
     </select>
 
+    <select id="selectMaxVersionNoForUpdate" resultType="java.lang.Integer">
+        SELECT MAX(version_no) FROM editor_document_revision WHERE document_id = #{documentId}
+    </select>
+
+    <update id="acquireDocumentLock">
+        SELECT pg_advisory_xact_lock(#{documentId})
+    </update>
+
 </mapper>

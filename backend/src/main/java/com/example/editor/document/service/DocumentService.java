@@ -8,6 +8,7 @@ import com.example.editor.asset.dto.AssetResponse;
 import com.example.editor.asset.service.AssetService;
 import com.example.editor.common.exception.ConflictException;
 import com.example.editor.common.exception.NotFoundException;
+import com.example.editor.common.security.UserContext;
 import com.example.editor.document.dto.*;
 import com.example.editor.document.entity.EditorDocument;
 import com.example.editor.common.util.ContentValidator;
@@ -15,6 +16,7 @@ import com.example.editor.common.util.SvgSanitizer;
 import com.example.editor.asset.mapper.AssetMapper;
 import com.example.editor.document.mapper.DocumentMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -30,6 +32,7 @@ import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DocumentService {
 
     private final DocumentMapper documentMapper;
@@ -37,16 +40,19 @@ public class DocumentService {
     private final AssetService assetService;
     private final ObjectMapper objectMapper;
 
-    private static final Long DEFAULT_USER_ID = 1L;
     private static final int DEFAULT_CANVAS_WIDTH = 1200;
     private static final int DEFAULT_CANVAS_HEIGHT = 800;
     private static final Pattern NUMBER_PATTERN = Pattern.compile("-?\\d+(?:\\.\\d+)?");
+
+    private Long userId() {
+        return UserContext.getCurrentUserId();
+    }
 
     @Transactional
     public DocumentDetailResponse create(CreateDocumentRequest request) {
         JsonNode sanitized = ContentValidator.validateAndSanitize(request.content());
         EditorDocument doc = new EditorDocument();
-        doc.setOwnerId(DEFAULT_USER_ID);
+        doc.setOwnerId(userId());
         doc.setTitle(request.title().trim());
         doc.setStatus("draft");
         doc.setSchemaVersion(request.schemaVersion());
@@ -71,7 +77,7 @@ public class DocumentService {
         }
 
         EditorDocument doc = new EditorDocument();
-        doc.setOwnerId(DEFAULT_USER_ID);
+        doc.setOwnerId(userId());
         doc.setTitle(resolvedTitle);
         doc.setStatus("draft");
         doc.setSchemaVersion(1);
@@ -79,7 +85,6 @@ public class DocumentService {
         doc.setContent(content.toString());
         documentMapper.insert(doc);
 
-        // Link asset to the newly created document
         assetMapper.updateDocumentId(asset.id(), doc.getId());
 
         return getDetail(doc.getId());
@@ -90,13 +95,13 @@ public class DocumentService {
         return toDetailResponse(doc);
     }
 
-    /**
-     * List documents with pagination
-     */
     public DocumentListResponse listDocuments(int page, int size) {
+        if (page < 0 || size < 1) {
+            throw new IllegalArgumentException("Invalid pagination parameters");
+        }
         int offset = page * size;
-        List<EditorDocument> docs = documentMapper.selectPageByOwner(DEFAULT_USER_ID, offset, size);
-        long total = documentMapper.countByOwner(DEFAULT_USER_ID);
+        List<EditorDocument> docs = documentMapper.selectPageByOwner(userId(), offset, size);
+        long total = documentMapper.countByOwner(userId());
         List<DocumentListItemResponse> items = docs.stream()
                 .map(d -> new DocumentListItemResponse(
                         d.getId(), d.getTitle(), d.getStatus(),
@@ -104,20 +109,6 @@ public class DocumentService {
                         parseContentSummary(d.getContent())))
                 .toList();
         return new DocumentListResponse(items, total, page, size);
-    }
-
-    /**
-     * Legacy method for backward compatibility (returns all documents)
-     * @deprecated Use listDocuments(int page, int size) instead
-     */
-    @Deprecated
-    public List<DocumentListItemResponse> listDocuments() {
-        return documentMapper.selectPageByOwner(DEFAULT_USER_ID, null, null).stream()
-                .map(d -> new DocumentListItemResponse(
-                        d.getId(), d.getTitle(), d.getStatus(),
-                        d.getCurrentVersion(), d.getCreatedAt(), d.getUpdatedAt(),
-                        parseContentSummary(d.getContent())))
-                .toList();
     }
 
     private DocumentListItemResponse.ContentSummary parseContentSummary(String contentJson) {
@@ -138,13 +129,14 @@ public class DocumentService {
             String thumbnail = root.has("thumbnail") ? root.get("thumbnail").asText() : null;
             return new DocumentListItemResponse.ContentSummary(canvasSummary, layerCount, thumbnail);
         } catch (Exception e) {
+            log.warn("Failed to parse content summary: {}", e.getMessage());
             return null;
         }
     }
 
     @Transactional
     public DocumentUpdateResponse update(Long id, UpdateDocumentRequest request) {
-        EditorDocument current = documentMapper.selectByIdForOwner(id, DEFAULT_USER_ID);
+        EditorDocument current = documentMapper.selectByIdForOwner(id, userId());
         if (current == null) {
             throw new NotFoundException("document not found");
         }
@@ -152,11 +144,10 @@ public class DocumentService {
             throw new ConflictException("document version conflict");
         }
 
-        // Validate and sanitize content
         JsonNode sanitized = ContentValidator.validateAndSanitize(request.content());
 
         int updated = documentMapper.updateDocument(
-                id, DEFAULT_USER_ID, request.title().trim(),
+                id, userId(), request.title().trim(),
                 request.schemaVersion(), sanitized.toString(), request.currentVersion());
         if (updated == 0) {
             throw new ConflictException("document version conflict");
@@ -168,7 +159,13 @@ public class DocumentService {
 
     @Transactional
     public void updateTitle(Long id, String title) {
-        int updated = documentMapper.updateTitle(id, DEFAULT_USER_ID, title);
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("Title cannot be empty");
+        }
+        if (title.length() > 255) {
+            throw new IllegalArgumentException("Title too long (max 255 characters)");
+        }
+        int updated = documentMapper.updateTitle(id, userId(), title);
         if (updated == 0) {
             throw new NotFoundException("document not found");
         }
@@ -176,7 +173,7 @@ public class DocumentService {
 
     @Transactional
     public void delete(Long id) {
-        int deleted = documentMapper.softDelete(id, DEFAULT_USER_ID);
+        int deleted = documentMapper.softDelete(id, userId());
         if (deleted == 0) {
             throw new NotFoundException("document not found");
         }
@@ -185,16 +182,24 @@ public class DocumentService {
     @Transactional
     public void restoreContent(Long id, String content) {
         EditorDocument doc = findOrThrow(id);
+        // Validate and sanitize restored content
+        JsonNode contentNode;
+        try {
+            contentNode = objectMapper.readTree(content);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid content JSON");
+        }
+        JsonNode sanitized = ContentValidator.validateAndSanitize(contentNode);
         int updated = documentMapper.updateDocument(
-                id, DEFAULT_USER_ID, doc.getTitle(),
-                doc.getSchemaVersion(), content, doc.getCurrentVersion());
+                id, userId(), doc.getTitle(),
+                doc.getSchemaVersion(), sanitized.toString(), doc.getCurrentVersion());
         if (updated == 0) {
             throw new ConflictException("document version conflict during restore");
         }
     }
 
     public EditorDocument findOrThrow(Long id) {
-        EditorDocument doc = documentMapper.selectByIdForOwner(id, DEFAULT_USER_ID);
+        EditorDocument doc = documentMapper.selectByIdForOwner(id, userId());
         if (doc == null) {
             throw new NotFoundException("document not found");
         }
@@ -206,6 +211,7 @@ public class DocumentService {
         try {
             contentNode = objectMapper.readTree(doc.getContent());
         } catch (Exception e) {
+            log.error("Failed to parse document content for id={}: {}", doc.getId(), e.getMessage());
             contentNode = objectMapper.createObjectNode();
         }
         return new DocumentDetailResponse(
@@ -304,6 +310,7 @@ public class DocumentService {
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setExpandEntityReferences(false);
             var builder = factory.newDocumentBuilder();
             var document = builder.parse(new ByteArrayInputStream(svgData.getBytes(StandardCharsets.UTF_8)));
             Element root = document.getDocumentElement();

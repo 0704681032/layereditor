@@ -20,13 +20,15 @@ public class RevisionController {
     @PostMapping
     public ApiResponse<RevisionResponse> createRevision(
             @PathVariable Long documentId,
-            @RequestBody(required = false) CreateRevisionRequest request) {
+            @RequestBody CreateRevisionRequest request) {
         return ApiResponse.ok(revisionService.createRevision(documentId,
                 request != null ? request : new CreateRevisionRequest(null)));
     }
 
     @GetMapping
-    public ApiResponse<List<RevisionResponse>> listRevisions(@PathVariable Long documentId) {
+    public ApiResponse<List<RevisionResponse>> listRevisions(
+            @PathVariable Long documentId,
+            @RequestParam(value = "limit", defaultValue = "100") int limit) {
         return ApiResponse.ok(revisionService.listRevisions(documentId));
     }
 

@@ -9,11 +9,11 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -90,9 +90,14 @@ public class AssetController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(content.mimeType()));
         headers.setContentLength(content.size());
-        // 对文件名进行URL编码，使用RFC 5987标准防止Content-Disposition头注入
         String encodedFilename = URLEncoder.encode(content.filename(), StandardCharsets.UTF_8).replace("+", "%20");
-        headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedFilename);
+        // SVG files served as attachment to prevent stored XSS
+        if ("image/svg+xml".equals(content.mimeType())) {
+            headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFilename);
+            headers.add("Content-Security-Policy", "sandbox");
+        } else {
+            headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedFilename);
+        }
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(new FileSystemResource(content.path()));
@@ -106,7 +111,6 @@ public class AssetController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.parseMediaType(content.mimeType()));
         headers.setContentLength(content.size());
-        // 缩略图同样需要对文件名做URL编码，防止header注入攻击
         String encodedThumbFilename = URLEncoder.encode(content.filename(), StandardCharsets.UTF_8).replace("+", "%20");
         headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedThumbFilename);
         return ResponseEntity.ok()
@@ -115,6 +119,7 @@ public class AssetController {
     }
 
     @PostMapping("/cleanup")
+    @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<AssetService.CleanupResult> cleanupOrphanedFiles() {
         return ApiResponse.ok(assetService.cleanupOrphanedFiles());
     }
@@ -140,6 +145,12 @@ public class AssetController {
             @RequestParam("text") String text,
             @RequestParam(value = "position", defaultValue = "BOTTOM_RIGHT") AssetService.WatermarkPosition position,
             @RequestParam(value = "opacity", defaultValue = "50") int opacity) {
+        if (text == null || text.isBlank() || text.length() > 200) {
+            throw new IllegalArgumentException("Watermark text must be 1-200 characters");
+        }
+        if (opacity < 0 || opacity > 100) {
+            throw new IllegalArgumentException("Opacity must be between 0 and 100");
+        }
         return ApiResponse.ok(assetService.applyWatermark(id, text, position, opacity));
     }
 
@@ -150,6 +161,9 @@ public class AssetController {
             @RequestParam("y") int y,
             @RequestParam("width") int width,
             @RequestParam("height") int height) {
+        if (x < 0 || y < 0 || width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("Invalid crop parameters");
+        }
         return ApiResponse.ok(assetService.cropImage(id, x, y, width, height));
     }
 }
