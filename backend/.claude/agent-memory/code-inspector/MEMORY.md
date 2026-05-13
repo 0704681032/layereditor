@@ -1,0 +1,3 @@
+- [Project Architecture](project-architecture.md) - Layer Editor backend: Spring Boot 3.3 + MyBatis + PostgreSQL, document/revision/asset modules
+- [Security Architecture Overview](security-overview.md) -- Spring Security config, auth, CORS, SVG sanitization patterns and known issues
+- [Code Review Findings Tracker](review-findings-common.md) -- Unresolved review findings in common/ package with severity and line numbers

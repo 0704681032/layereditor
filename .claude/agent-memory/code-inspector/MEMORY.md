@@ -1,0 +1,3 @@
+- [Project Overview](project_overview.md) - LayerEditor backend architecture, tech stack, key patterns, and known issues
+- [Project Architecture](project_architecture.md) - Frontend architecture and review findings (React/Zustand/Konva)
+- [ImageUtils Review](imageutils_review.md) - Critical bugs found in ImageUtils.java (VP8X offset, TIFF parsing, resource leaks)

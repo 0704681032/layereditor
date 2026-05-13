@@ -175,7 +175,23 @@
       "Bash(xargs -I{} taskkill //F //PID {})",
       "Bash(grep -oP '\\\\$\\\\.post\\\\\\([^;]+')",
       "Bash(git fetch *)",
-      "Bash(npx @anthropic-ai/chrome-devtools-mcp@latest --help)"
+      "Bash(npx @anthropic-ai/chrome-devtools-mcp@latest --help)",
+      "Bash(mvn test *)",
+      "Bash(xxd E:/layereditor/backend/test-images/test.xbm)",
+      "Bash(javac TestRegex.java)",
+      "Bash(xxd E:/layereditor/backend/network-test-images/google_webp.webp)",
+      "Bash(javac DownloadGif.java)",
+      "Bash(tee test_output.log)",
+      "Bash(mvn spring-boot:run -pl .)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(docker run *)",
+      "Bash(net start *)",
+      "Bash(sc query *)",
+      "Bash(D:/PostgreSQL/pgsql/bin/pg_ctl.exe start *)",
+      "Bash(break)",
+      "Bash(cat src/main/resources/logback-spring.xml)",
+      "Bash(cat src/main/resources/logback.xml)",
+      "Bash(jobs -l)"
     ]
   }
 }
