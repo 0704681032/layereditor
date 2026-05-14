@@ -4,8 +4,10 @@ import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.DataInput;
 import java.io.DataInputStream;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 常用图片尺寸解析工具类
@@ -115,75 +117,113 @@ public final class ImageUtils {
      * 解析 JPEG 图片
      */
     private static Dimension parseJPEG(DataInputStream dis) throws IOException {
-        dis.readShort(); // SOI
+        int soi = dis.readUnsignedShort();
+        if (soi != 0xFFD8) {
+            throw new IOException("Invalid JPEG SOI marker");
+        }
 
         while (true) {
-            int marker = dis.readShort();
-            if ((marker & 0xFF00) != 0xFF00) {
-                throw new IOException("Invalid JPEG marker");
-            }
-
-            int type = marker & 0xFF;
+            int type = readJpegMarkerType(dis);
 
             if (type >= 0xC0 && type <= 0xCF && type != 0xC4 && type != 0xC8 && type != 0xCC) {
-                dis.readShort(); // length
-                dis.readByte();  // precision
-                int height = dis.readShort();
-                int width = dis.readShort();
-                return new Dimension(width, height);
+                int length = dis.readUnsignedShort();
+                if (length < 7) {
+                    throw new IOException("Invalid JPEG SOF segment length: " + length);
+                }
+                dis.readUnsignedByte();  // precision
+                int height = dis.readUnsignedShort();
+                int width = dis.readUnsignedShort();
+                return validateDimension(width, height);
             }
 
             if (type == 0xD9 || type == 0xDA) {
                 throw new IOException("JPEG SOF marker not found");
             }
 
-            if (type >= 0xD0 && type <= 0xD7) {
+            if (type == 0x01 || type >= 0xD0 && type <= 0xD7) {
                 continue;
             }
 
-            int length = dis.readShort() & 0xFFFF;
+            int length = dis.readUnsignedShort();
             if (length < 2) {
                 throw new IOException("Invalid JPEG segment length: " + length);
             }
-            dis.skipBytes(length - 2);
+            skipFully(dis, length - 2);
         }
+    }
+
+    private static int readJpegMarkerType(DataInputStream dis) throws IOException {
+        int b;
+        do {
+            b = dis.readUnsignedByte();
+        } while (b != 0xFF);
+
+        do {
+            b = dis.readUnsignedByte();
+        } while (b == 0xFF);
+
+        if (b == 0x00) {
+            throw new IOException("Invalid JPEG marker");
+        }
+        return b;
     }
 
     /**
      * 解析 PNG 图片
      */
     private static Dimension parsePNG(DataInputStream dis) throws IOException {
-        dis.skipBytes(8);
-        dis.readInt(); // length
+        byte[] signature = new byte[8];
+        dis.readFully(signature);
+        byte[] expectedSignature = new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        for (int i = 0; i < expectedSignature.length; i++) {
+            if (signature[i] != expectedSignature[i]) {
+                throw new IOException("Invalid PNG signature");
+            }
+        }
+        int length = dis.readInt();
         String type = readFourCC(dis);
-        if (!"IHDR".equals(type)) {
+        if (length != 13 || !"IHDR".equals(type)) {
             throw new IOException("PNG IHDR chunk not found");
         }
         int width = dis.readInt();
         int height = dis.readInt();
-        return new Dimension(width, height);
+        return validateDimension(width, height);
     }
 
     /**
      * 解析 GIF 图片
      */
     private static Dimension parseGIF(DataInputStream dis) throws IOException {
-        dis.skipBytes(6);
+        String signature = readFourCC(dis);
+        int version1 = dis.readUnsignedByte();
+        int version2 = dis.readUnsignedByte();
+        if (!"GIF8".equals(signature) || !((version1 == '7' || version1 == '9') && version2 == 'a')) {
+            throw new IOException("Invalid GIF signature");
+        }
         int width = readUInt16LE(dis);
         int height = readUInt16LE(dis);
-        return new Dimension(width, height);
+        return validateDimension(width, height);
     }
 
     /**
      * 解析 BMP 图片
      */
     private static Dimension parseBMP(DataInputStream dis) throws IOException {
-        dis.skipBytes(14);
-        readUInt32LE(dis); // headerSize
-        int width = (int) readUInt32LE(dis);
-        int height = (int) readUInt32LE(dis);
-        if (height < 0) height = -height;
-        return new Dimension(width, height);
+        skipFully(dis, 14);
+        long headerSize = readUInt32LE(dis);
+        int width;
+        int height;
+        if (headerSize == 12) {
+            width = readUInt16LE(dis);
+            height = readUInt16LE(dis);
+        } else if (headerSize >= 40) {
+            width = readInt32LE(dis);
+            height = readInt32LE(dis);
+            if (height < 0) height = -height;
+        } else {
+            throw new IOException("Unsupported BMP DIB header size: " + headerSize);
+        }
+        return validateDimension(width, height);
     }
 
     /**
@@ -214,52 +254,57 @@ public final class ImageUtils {
     }
 
     private static Dimension parseVP8(DataInputStream dis) throws IOException {
-        readUInt32LE(dis);
-        byte[] frameTag = new byte[3];
-        dis.readFully(frameTag);
-        if (frameTag[0] != (byte) 0x9d || frameTag[1] != 0x01 || frameTag[2] != 0x2a) {
-            throw new IOException("Invalid VP8 frame tag");
+        long chunkSize = readUInt32LE(dis);
+        if (chunkSize < 10) {
+            throw new IOException("Invalid VP8 chunk size: " + chunkSize);
+        }
+        skipFully(dis, 3); // frame tag
+        byte[] startCode = new byte[3];
+        dis.readFully(startCode);
+        if (startCode[0] != (byte) 0x9d || startCode[1] != 0x01 || startCode[2] != 0x2a) {
+            throw new IOException("Invalid VP8 start code");
         }
         int widthAndScale = readUInt16LE(dis);
         int heightAndScale = readUInt16LE(dis);
-        return new Dimension(widthAndScale & 0x3FFF, heightAndScale & 0x3FFF);
+        return validateDimension(widthAndScale & 0x3FFF, heightAndScale & 0x3FFF);
     }
 
     private static Dimension parseVP8L(DataInputStream dis) throws IOException {
-        readUInt32LE(dis);
-        if (dis.readByte() != 0x2f) {
+        long chunkSize = readUInt32LE(dis);
+        if (chunkSize < 5) {
+            throw new IOException("Invalid VP8L chunk size: " + chunkSize);
+        }
+        if (dis.readUnsignedByte() != 0x2f) {
             throw new IOException("Invalid VP8L signature");
         }
         byte[] bits = new byte[4];
         dis.readFully(bits);
         int widthHeightBits = (bits[0] & 0xFF) | ((bits[1] & 0xFF) << 8) | ((bits[2] & 0xFF) << 16) | ((bits[3] & 0xFF) << 24);
-        return new Dimension((widthHeightBits & 0x3FFF) + 1, ((widthHeightBits >> 14) & 0x3FFF) + 1);
+        return validateDimension((widthHeightBits & 0x3FFF) + 1, ((widthHeightBits >> 14) & 0x3FFF) + 1);
     }
 
     private static Dimension parseVP8X(DataInputStream dis) throws IOException {
-        readUInt32LE(dis);
+        long chunkSize = readUInt32LE(dis);
+        if (chunkSize < 10) {
+            throw new IOException("Invalid VP8X chunk size: " + chunkSize);
+        }
         readUInt32LE(dis); // flags (4 bytes, not 2)
         int widthMinus1 = readUInt24LE(dis);
         int heightMinus1 = readUInt24LE(dis);
-        return new Dimension(widthMinus1 + 1, heightMinus1 + 1);
+        return validateDimension(widthMinus1 + 1, heightMinus1 + 1);
     }
 
     /**
      * 解析 TIFF 图片
      */
     private static Dimension parseTIFF(DataInputStream dis, boolean bigEndian) throws IOException {
-        dis.skipBytes(4);
+        skipFully(dis, 4);
         long ifdOffset = bigEndian ? dis.readInt() & 0xFFFFFFFFL : readUInt32LE(dis);
 
         if (ifdOffset < 8) {
             throw new IOException("Invalid TIFF IFD offset: " + ifdOffset);
         }
-        long skipBytes = ifdOffset - 8;
-        while (skipBytes > 0) {
-            long skipped = dis.skip(skipBytes);
-            if (skipped <= 0) break;
-            skipBytes -= skipped;
-        }
+        skipFully(dis, ifdOffset - 8);
 
         int entryCount = bigEndian ? dis.readShort() & 0xFFFF : readUInt16LE(dis);
 
@@ -293,25 +338,25 @@ public final class ImageUtils {
                 value = 0;
             }
 
-            if (tag == 256) width = value;
-            if (tag == 257) height = value;
+            if (count == 1 && tag == 256) width = value;
+            if (count == 1 && tag == 257) height = value;
 
             if (width > 0 && height > 0) {
-                return new Dimension(width, height);
+                return validateDimension(width, height);
             }
         }
 
         if (width == 0 || height == 0) {
             throw new IOException("TIFF width/height tags not found");
         }
-        return new Dimension(width, height);
+        return validateDimension(width, height);
     }
 
     /**
      * 解析 ICO 图片
      */
     private static Dimension parseICO(DataInputStream dis) throws IOException {
-        dis.skipBytes(4);
+        skipFully(dis, 4);
         int count = readUInt16LE(dis);
         if (count == 0) {
             throw new IOException("ICO file has no images");
@@ -322,24 +367,24 @@ public final class ImageUtils {
         if (width == 0) width = 256;
         if (height == 0) height = 256;
 
-        return new Dimension(width, height);
+        return validateDimension(width, height);
     }
 
     /**
      * 解析 PSD 图片
      */
     private static Dimension parsePSD(DataInputStream dis) throws IOException {
-        dis.skipBytes(12);
-        dis.readShort(); // channels
+        skipFully(dis, 12);
+        dis.readUnsignedShort(); // channels
         int height = dis.readInt();
         int width = dis.readInt();
-        return new Dimension(width, height);
+        return validateDimension(width, height);
     }
 
     private static String readFourCC(DataInput in) throws IOException {
         byte[] bytes = new byte[4];
         in.readFully(bytes);
-        return new String(bytes, "ASCII");
+        return new String(bytes, StandardCharsets.US_ASCII);
     }
 
     private static int readUInt16LE(DataInput in) throws IOException {
@@ -354,10 +399,37 @@ public final class ImageUtils {
         return (bytes[0] & 0xFF) | ((bytes[1] & 0xFF) << 8) | ((bytes[2] & 0xFF) << 16);
     }
 
+    private static int readInt32LE(DataInput in) throws IOException {
+        byte[] bytes = new byte[4];
+        in.readFully(bytes);
+        return (bytes[0] & 0xFF) | ((bytes[1] & 0xFF) << 8) | ((bytes[2] & 0xFF) << 16) | (bytes[3] << 24);
+    }
+
     private static long readUInt32LE(DataInput in) throws IOException {
         byte[] bytes = new byte[4];
         in.readFully(bytes);
         return (bytes[0] & 0xFFL) | ((bytes[1] & 0xFFL) << 8) | ((bytes[2] & 0xFFL) << 16) | ((bytes[3] & 0xFFL) << 24);
+    }
+
+    private static void skipFully(DataInputStream in, long bytes) throws IOException {
+        long remaining = bytes;
+        while (remaining > 0) {
+            long skipped = in.skip(remaining);
+            if (skipped <= 0) {
+                if (in.read() == -1) {
+                    throw new EOFException("Unexpected end of file");
+                }
+                skipped = 1;
+            }
+            remaining -= skipped;
+        }
+    }
+
+    private static Dimension validateDimension(int width, int height) throws IOException {
+        if (width <= 0 || height <= 0) {
+            throw new IOException("Invalid image dimensions: " + width + " x " + height);
+        }
+        return new Dimension(width, height);
     }
 
     public static final class Dimension {

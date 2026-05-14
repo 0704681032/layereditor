@@ -24,7 +24,7 @@ class ImageUtilsTest {
 
     @BeforeAll
     static void setup() throws IOException {
-        testDir = Paths.get("backend", TEST_IMAGES_DIR);
+        testDir = Paths.get("target", TEST_IMAGES_DIR);
         Files.createDirectories(testDir);
         generateTestImages();
     }
@@ -49,6 +49,40 @@ class ImageUtilsTest {
         assertEquals(100, dim.getWidth());
         assertEquals(50, dim.getHeight());
         System.out.println("JPEG: " + dim);
+    }
+
+    @Test
+    @DisplayName("JPEG 大尺寸应按无符号宽高解析")
+    void testJPEGUnsignedDimensions() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(new byte[]{(byte) 0xFF, (byte) 0xD8}); // SOI
+        out.write(new byte[]{(byte) 0xFF, (byte) 0xC0}); // SOF0
+        out.write(new byte[]{0x00, 0x11}); // segment length
+        out.write(0x08); // precision
+        out.write(new byte[]{(byte) 0x9C, 0x40}); // height 40000
+        out.write(new byte[]{(byte) 0x9C, 0x40}); // width 40000
+
+        ImageUtils.Dimension dim = ImageUtils.getDimension(out.toByteArray());
+        assertEquals(40000, dim.getWidth());
+        assertEquals(40000, dim.getHeight());
+    }
+
+    @Test
+    @DisplayName("JPEG marker 前的填充字节应被跳过")
+    void testJPEGFillBytesBeforeMarker() throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        out.write(new byte[]{(byte) 0xFF, (byte) 0xD8}); // SOI
+        out.write(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xE0}); // fill bytes + APP0
+        out.write(new byte[]{0x00, 0x04, 0x00, 0x00}); // APP0 segment length + payload
+        out.write(new byte[]{(byte) 0xFF, (byte) 0xC0}); // SOF0
+        out.write(new byte[]{0x00, 0x11}); // segment length
+        out.write(0x08); // precision
+        out.write(new byte[]{0x00, 0x32}); // height 50
+        out.write(new byte[]{0x00, 0x64}); // width 100
+
+        ImageUtils.Dimension dim = ImageUtils.getDimension(out.toByteArray());
+        assertEquals(100, dim.getWidth());
+        assertEquals(50, dim.getHeight());
     }
 
     @Test
@@ -218,6 +252,13 @@ class ImageUtilsTest {
         assertThrows(IOException.class, () -> ImageUtils.getDimension(new byte[]{0x00, 0x00, 0x00, 0x00}));
     }
 
+    @Test
+    @DisplayName("伪造 PNG 头应抛出异常")
+    void testInvalidPngSignature() {
+        byte[] data = new byte[]{(byte) 0x89, 0x50, 0x00, 0x00, 0x00, 0x00};
+        assertThrows(IOException.class, () -> ImageUtils.getDimension(data));
+    }
+
     // ========== 测试图片生成 ==========
 
     private static void generateTestImages() throws IOException {
@@ -269,6 +310,7 @@ class ImageUtilsTest {
         writeFourCC(vp8, "WEBP");
         writeFourCC(vp8, "VP8 ");
         writeUInt32LE(vp8, 10);
+        vp8.write(new byte[]{0x00, 0x00, 0x00}); // frame tag
         vp8.write(new byte[]{(byte) 0x9d, 0x01, 0x2a});
         writeUInt16LE(vp8, 100);
         writeUInt16LE(vp8, 50);
