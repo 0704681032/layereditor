@@ -241,16 +241,12 @@ public final class ImageUtils {
         }
 
         String chunkType = readFourCC(dis);
-        switch (chunkType) {
-            case "VP8 ":
-                return parseVP8(dis);
-            case "VP8L":
-                return parseVP8L(dis);
-            case "VP8X":
-                return parseVP8X(dis);
-            default:
-                throw new IOException("Unknown WebP chunk type: " + chunkType);
-        }
+        return switch (chunkType) {
+            case "VP8 " -> parseVP8(dis);
+            case "VP8L" -> parseVP8L(dis);
+            case "VP8X" -> parseVP8X(dis);
+            default -> throw new IOException("Unknown WebP chunk type: " + chunkType);
+        };
     }
 
     private static Dimension parseVP8(DataInputStream dis) throws IOException {

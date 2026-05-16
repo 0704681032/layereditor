@@ -5,42 +5,32 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.Set;
 
 public final class ContentValidator {
 
     private ContentValidator() {}
 
     private static final int MAX_CONTENT_SIZE = 10 * 1024 * 1024;
-
     private static final int MAX_SVG_SIZE = 2 * 1024 * 1024;
-
     private static final int MAX_LAYERS = 500;
-
     private static final int MAX_TEXT_LENGTH = 50000;
 
-    private static final java.util.Set<String> VALID_LAYER_TYPES = java.util.Set.of(
+    private static final Set<String> VALID_LAYER_TYPES = Set.of(
             "image", "svg", "text", "group", "shape", "rect", "ellipse", "line"
     );
 
     public static JsonNode validateAndSanitize(JsonNode content) {
-        if (content == null) {
-            throw new IllegalArgumentException("Content cannot be null");
-        }
+        Optional.ofNullable(content)
+            .orElseThrow(() -> new IllegalArgumentException("Content cannot be null"));
 
         if (!content.has("canvas") || !content.has("layers")) {
             throw new IllegalArgumentException("Content must have 'canvas' and 'layers' fields");
         }
 
         JsonNode canvas = content.get("canvas");
-        if (!canvas.has("width") || !canvas.has("height")) {
-            throw new IllegalArgumentException("Canvas must have 'width' and 'height'");
-        }
-
-        int canvasWidth = canvas.get("width").asInt();
-        int canvasHeight = canvas.get("height").asInt();
-        if (canvasWidth < 10 || canvasWidth > 10000 || canvasHeight < 10 || canvasHeight > 10000) {
-            throw new IllegalArgumentException("Canvas dimensions must be between 10 and 10000");
-        }
+        validateCanvas(canvas);
 
         JsonNode layers = content.get("layers");
         if (!layers.isArray()) {
@@ -51,18 +41,28 @@ public final class ContentValidator {
             throw new IllegalArgumentException("Too many layers (max " + MAX_LAYERS + ")");
         }
 
-        // Validate content size in bytes
         validateContentSize(content.toString());
-
         sanitizeLayers((ArrayNode) layers);
 
         return content;
     }
 
-    public static void validateContentSize(String contentStr) {
-        if (contentStr == null) {
-            throw new IllegalArgumentException("Content cannot be null");
+    private static void validateCanvas(JsonNode canvas) {
+        if (!canvas.has("width") || !canvas.has("height")) {
+            throw new IllegalArgumentException("Canvas must have 'width' and 'height'");
         }
+
+        int canvasWidth = canvas.get("width").asInt();
+        int canvasHeight = canvas.get("height").asInt();
+        if (canvasWidth < 10 || canvasWidth > 10000 || canvasHeight < 10 || canvasHeight > 10000) {
+            throw new IllegalArgumentException("Canvas dimensions must be between 10 and 10000");
+        }
+    }
+
+    public static void validateContentSize(String contentStr) {
+        Optional.ofNullable(contentStr)
+            .orElseThrow(() -> new IllegalArgumentException("Content cannot be null"));
+
         int byteSize = contentStr.getBytes(StandardCharsets.UTF_8).length;
         if (byteSize > MAX_CONTENT_SIZE) {
             throw new IllegalArgumentException("Content too large (max " + (MAX_CONTENT_SIZE / 1024 / 1024) + "MB)");
@@ -70,12 +70,11 @@ public final class ContentValidator {
     }
 
     private static void sanitizeLayers(ArrayNode layers) {
-        for (int i = 0; i < layers.size(); i++) {
-            JsonNode layer = layers.get(i);
+        layers.forEach(layer -> {
             if (layer.isObject()) {
                 sanitizeLayer((ObjectNode) layer);
             }
-        }
+        });
     }
 
     private static void sanitizeLayer(ObjectNode layer) {
@@ -85,26 +84,38 @@ public final class ContentValidator {
             throw new IllegalArgumentException("Invalid layer type: " + type);
         }
 
-        if ("svg".equals(type) && layer.has("svgData")) {
-            String svgData = layer.get("svgData").asText();
-            if (svgData != null) {
+        sanitizeSvgLayer(layer, type);
+        sanitizeTextLayer(layer, type);
+        sanitizeGroupLayer(layer, type);
+    }
+
+    private static void sanitizeSvgLayer(ObjectNode layer, String type) {
+        if (!"svg".equals(type) || !layer.has("svgData")) return;
+
+        Optional.ofNullable(layer.get("svgData").asText())
+            .ifPresent(svgData -> {
                 if (svgData.length() > MAX_SVG_SIZE) {
                     throw new IllegalArgumentException("SVG data too large in layer (max " + (MAX_SVG_SIZE / 1024 / 1024) + "MB)");
                 }
-                String sanitized = SvgSanitizer.sanitize(svgData);
-                layer.put("svgData", sanitized);
-            }
-        }
+                layer.put("svgData", SvgSanitizer.sanitize(svgData));
+            });
+    }
 
-        if ("text".equals(type) && layer.has("text")) {
-            String text = layer.get("text").asText();
-            if (text != null && text.length() > MAX_TEXT_LENGTH) {
+    private static void sanitizeTextLayer(ObjectNode layer, String type) {
+        if (!"text".equals(type) || !layer.has("text")) return;
+
+        Optional.ofNullable(layer.get("text").asText())
+            .filter(text -> text.length() > MAX_TEXT_LENGTH)
+            .ifPresent(text -> {
                 throw new IllegalArgumentException("Text content too long in layer (max " + MAX_TEXT_LENGTH + " characters)");
-            }
-        }
+            });
+    }
 
-        if ("group".equals(type) && layer.has("children") && layer.get("children").isArray()) {
-            sanitizeLayers((ArrayNode) layer.get("children"));
-        }
+    private static void sanitizeGroupLayer(ObjectNode layer, String type) {
+        if (!"group".equals(type) || !layer.has("children")) return;
+
+        Optional.ofNullable(layer.get("children"))
+            .filter(JsonNode::isArray)
+            .ifPresent(children -> sanitizeLayers((ArrayNode) children));
     }
 }

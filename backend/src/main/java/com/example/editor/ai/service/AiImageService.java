@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 import java.net.InetAddress;
 import java.net.URI;
 import java.util.Base64;
+import java.util.Optional;
+import java.util.function.Function;
 
 @Service
 @Slf4j
@@ -43,128 +45,93 @@ public class AiImageService {
 
     public byte[] matting(byte[] imageBytes, String type) {
         checkCredentials();
-
         String action = "human".equals(type) ? "SegmentHumanBody" : "SegmentImage";
         log.debug("Matting with action: {} for type: {}", action, type);
 
-        try {
-            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-
-            VolcengineMattingRequest request = VolcengineMattingRequest.builder()
-                .imageBase64(base64Image)
-                .build();
-
-            VolcengineResponse response = volcengineClient.matting(action, properties.getVersion(), request);
-
-            validateResponse(response, "Matting");
-            return decodeResultImage(response);
-
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Matting API call failed: {}", e.getMessage());
-            throw new AiProcessingException("Failed to process image matting", e);
-        }
+        return executeOperation(
+            () -> VolcengineMattingRequest.builder()
+                .imageBase64(Base64.getEncoder().encodeToString(imageBytes))
+                .build(),
+            req -> volcengineClient.matting(action, properties.getVersion(), req),
+            "Matting"
+        );
     }
 
     public byte[] mattingFromUrl(String imageUrl, String type) {
         checkCredentials();
         validateImageUrl(imageUrl);
-
         String action = "human".equals(type) ? "SegmentHumanBody" : "SegmentImage";
         log.debug("Matting from URL with action: {}", action);
 
-        try {
-            VolcengineMattingRequest request = VolcengineMattingRequest.builder()
+        return executeOperation(
+            () -> VolcengineMattingRequest.builder()
                 .imageUrl(imageUrl)
-                .build();
-
-            VolcengineResponse response = volcengineClient.matting(action, properties.getVersion(), request);
-
-            validateResponse(response, "Matting");
-            return decodeResultImage(response);
-
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Matting from URL failed: {}", e.getMessage());
-            throw new AiProcessingException("Failed to process image matting from URL", e);
-        }
+                .build(),
+            req -> volcengineClient.matting(action, properties.getVersion(), req),
+            "Matting"
+        );
     }
 
     public byte[] outpainting(byte[] imageBytes, String direction, int pixels) {
         checkCredentials();
 
-        try {
-            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+        return executeOperation(
+            () -> VolcengineOutpaintingRequest.builder()
+                .imageBase64(Base64.getEncoder().encodeToString(imageBytes))
+                .expandTop(pixelsForDirection(direction, "top", pixels))
+                .expandBottom(pixelsForDirection(direction, "bottom", pixels))
+                .expandLeft(pixelsForDirection(direction, "left", pixels))
+                .expandRight(pixelsForDirection(direction, "right", pixels))
+                .build(),
+            req -> volcengineClient.outpainting("ImageOutpainting", properties.getVersion(), req),
+            "Outpainting"
+        );
+    }
 
-            VolcengineOutpaintingRequest request = VolcengineOutpaintingRequest.builder()
-                .imageBase64(base64Image)
-                .expandTop(direction.equals("top") || direction.equals("all") ? String.valueOf(pixels) : "0")
-                .expandBottom(direction.equals("bottom") || direction.equals("all") ? String.valueOf(pixels) : "0")
-                .expandLeft(direction.equals("left") || direction.equals("all") ? String.valueOf(pixels) : "0")
-                .expandRight(direction.equals("right") || direction.equals("all") ? String.valueOf(pixels) : "0")
-                .build();
-
-            VolcengineResponse response = volcengineClient.outpainting("ImageOutpainting", properties.getVersion(), request);
-
-            validateResponse(response, "Outpainting");
-            return decodeResultImage(response);
-
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Outpainting API call failed: {}", e.getMessage());
-            throw new AiProcessingException("Failed to process image outpainting", e);
-        }
+    private String pixelsForDirection(String direction, String target, int pixels) {
+        return direction.equals(target) || direction.equals("all") ? String.valueOf(pixels) : "0";
     }
 
     public byte[] inpainting(byte[] imageBytes, byte[] maskBytes) {
         checkCredentials();
 
-        try {
-            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-            String base64Mask = Base64.getEncoder().encodeToString(maskBytes);
-
-            VolcengineInpaintingRequest request = VolcengineInpaintingRequest.builder()
-                .imageBase64(base64Image)
-                .maskBase64(base64Mask)
-                .build();
-
-            VolcengineResponse response = volcengineClient.inpainting("ImageInpainting", properties.getVersion(), request);
-
-            validateResponse(response, "Inpainting");
-            return decodeResultImage(response);
-
-        } catch (IllegalStateException | IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("Inpainting API call failed: {}", e.getMessage());
-            throw new AiProcessingException("Failed to process image inpainting", e);
-        }
+        return executeOperation(
+            () -> VolcengineInpaintingRequest.builder()
+                .imageBase64(Base64.getEncoder().encodeToString(imageBytes))
+                .maskBase64(Base64.getEncoder().encodeToString(maskBytes))
+                .build(),
+            req -> volcengineClient.inpainting("ImageInpainting", properties.getVersion(), req),
+            "Inpainting"
+        );
     }
 
     public byte[] superResolution(byte[] imageBytes, int scale) {
         checkCredentials();
 
-        try {
-            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
-
-            VolcengineSuperResolutionRequest request = VolcengineSuperResolutionRequest.builder()
-                .imageBase64(base64Image)
+        return executeOperation(
+            () -> VolcengineSuperResolutionRequest.builder()
+                .imageBase64(Base64.getEncoder().encodeToString(imageBytes))
                 .scale(String.valueOf(scale))
-                .build();
+                .build(),
+            req -> volcengineClient.superResolution("ImageSuperResolution", properties.getVersion(), req),
+            "Super Resolution"
+        );
+    }
 
-            VolcengineResponse response = volcengineClient.superResolution("ImageSuperResolution", properties.getVersion(), request);
-
-            validateResponse(response, "Super Resolution");
+    private <T> byte[] executeOperation(
+            java.util.function.Supplier<T> requestSupplier,
+            Function<T, VolcengineResponse> clientCall,
+            String operationName) {
+        try {
+            T request = requestSupplier.get();
+            VolcengineResponse response = clientCall.apply(request);
+            validateResponse(response, operationName);
             return decodeResultImage(response);
-
         } catch (IllegalStateException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Super Resolution API call failed: {}", e.getMessage());
-            throw new AiProcessingException("Failed to process image super resolution", e);
+            log.error("{} API call failed: {}", operationName, e.getMessage());
+            throw new AiProcessingException("Failed to process " + operationName.toLowerCase(), e);
         }
     }
 
@@ -172,9 +139,9 @@ public class AiImageService {
      * SSRF protection using DNS resolution and IP address validation.
      */
     private void validateImageUrl(String imageUrl) {
-        if (imageUrl == null || imageUrl.isEmpty()) {
-            throw new IllegalArgumentException("imageUrl is required");
-        }
+        Optional.ofNullable(imageUrl)
+            .filter(url -> !url.isEmpty())
+            .orElseThrow(() -> new IllegalArgumentException("imageUrl is required"));
 
         if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
             throw new IllegalArgumentException("imageUrl must be HTTP or HTTPS protocol");
@@ -182,34 +149,14 @@ public class AiImageService {
 
         try {
             URI uri = new URI(imageUrl);
-            String host = uri.getHost();
-            if (host == null || host.isEmpty()) {
-                throw new IllegalArgumentException("Invalid URL: missing host");
-            }
+            String host = Optional.ofNullable(uri.getHost())
+                .filter(h -> !h.isEmpty())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid URL: missing host"));
 
             InetAddress address = InetAddress.getByName(host);
 
-            if (address.isLoopbackAddress() || address.isSiteLocalAddress() ||
-                address.isLinkLocalAddress() || address.isAnyLocalAddress()) {
-                log.warn("Blocked SSRF attempt to private network: {} -> {}", host, address);
-                throw new IllegalArgumentException("Access to private network URLs is not allowed");
-            }
-
-            byte[] bytes = address.getAddress();
-            if (bytes.length == 4) {
-                int first = bytes[0] & 0xFF;
-                int second = bytes[1] & 0xFF;
-                // 100.64.0.0/10 (Carrier-grade NAT, RFC 6598)
-                if (first == 100 && second >= 64 && second <= 127) {
-                    log.warn("Blocked SSRF attempt to CGNAT range: {} -> {}", host, address);
-                    throw new IllegalArgumentException("Access to private network URLs is not allowed");
-                }
-                // 169.254.0.0/16 (link-local)
-                if (first == 169 && second == 254) {
-                    log.warn("Blocked SSRF attempt to link-local: {} -> {}", host, address);
-                    throw new IllegalArgumentException("Access to private network URLs is not allowed");
-                }
-            }
+            validateNotPrivateNetwork(host, address);
+            validateNotSpecialRange(host, address);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -217,10 +164,36 @@ public class AiImageService {
         }
     }
 
-    private void validateResponse(VolcengineResponse response, String operation) {
-        if (response == null) {
-            throw new IllegalStateException(operation + " API returned null response");
+    private void validateNotPrivateNetwork(String host, InetAddress address) {
+        if (address.isLoopbackAddress() || address.isSiteLocalAddress() ||
+            address.isLinkLocalAddress() || address.isAnyLocalAddress()) {
+            log.warn("Blocked SSRF attempt to private network: {} -> {}", host, address);
+            throw new IllegalArgumentException("Access to private network URLs is not allowed");
         }
+    }
+
+    private void validateNotSpecialRange(String host, InetAddress address) {
+        byte[] bytes = address.getAddress();
+        if (bytes.length == 4) {
+            int first = bytes[0] & 0xFF;
+            int second = bytes[1] & 0xFF;
+            // 100.64.0.0/10 (Carrier-grade NAT, RFC 6598)
+            if (first == 100 && second >= 64 && second <= 127) {
+                log.warn("Blocked SSRF attempt to CGNAT range: {} -> {}", host, address);
+                throw new IllegalArgumentException("Access to private network URLs is not allowed");
+            }
+            // 169.254.0.0/16 (link-local)
+            if (first == 169 && second == 254) {
+                log.warn("Blocked SSRF attempt to link-local: {} -> {}", host, address);
+                throw new IllegalArgumentException("Access to private network URLs is not allowed");
+            }
+        }
+    }
+
+    private void validateResponse(VolcengineResponse response, String operation) {
+        Optional.ofNullable(response)
+            .orElseThrow(() -> new IllegalStateException(operation + " API returned null response"));
+
         if (response.hasError()) {
             String errorMsg = response.getErrorMessage();
             log.error("{} API error: {}", operation, errorMsg);
@@ -229,11 +202,10 @@ public class AiImageService {
     }
 
     private byte[] decodeResultImage(VolcengineResponse response) {
-        String resultBase64 = response.getResultImageBase64();
-        if (resultBase64 == null || resultBase64.isEmpty()) {
-            throw new IllegalStateException("No image data in API response");
-        }
-        return Base64.getDecoder().decode(resultBase64);
+        return Optional.ofNullable(response.getResultImageBase64())
+            .filter(base64 -> !base64.isEmpty())
+            .map(Base64.getDecoder()::decode)
+            .orElseThrow(() -> new IllegalStateException("No image data in API response"));
     }
 
     public static class AiProcessingException extends RuntimeException {

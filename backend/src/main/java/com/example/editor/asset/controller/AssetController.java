@@ -62,8 +62,9 @@ public class AssetController {
 
     @GetMapping("/check-duplicate")
     public ApiResponse<AssetResponse> checkDuplicate(@RequestParam("sha256") String sha256) {
-        AssetResponse existing = assetService.findDuplicateBySha256(sha256);
-        return ApiResponse.ok(existing);
+        return assetService.findDuplicateBySha256(sha256)
+                .map(ApiResponse::ok)
+                .orElse(ApiResponse.ok(null));
     }
 
     @GetMapping("/stats")

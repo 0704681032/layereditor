@@ -30,6 +30,7 @@ import java.security.MessageDigest;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -268,12 +269,9 @@ public class AssetService {
         assetMapper.deleteById(id);
     }
 
-    public AssetResponse findDuplicateBySha256(String sha256) {
-        EditorAsset existing = assetMapper.selectBySha256(sha256);
-        if (existing != null) {
-            return toResponse(existing);
-        }
-        return null;
+    public Optional<AssetResponse> findDuplicateBySha256(String sha256) {
+        return Optional.ofNullable(assetMapper.selectBySha256(sha256))
+                .map(this::toResponse);
     }
 
     public AssetListResponse searchAssets(String query, Long documentId, String kind, int page, int size) {
@@ -634,14 +632,18 @@ public class AssetService {
                 int textHeight = fm.getHeight();
                 int x, y;
 
-                switch (position) {
-                    case TOP_LEFT -> { x = 10; y = textHeight + 10; }
-                    case TOP_RIGHT -> { x = original.getWidth() - textWidth - 10; y = textHeight + 10; }
-                    case BOTTOM_LEFT -> { x = 10; y = original.getHeight() - 10; }
-                    case BOTTOM_RIGHT -> { x = original.getWidth() - textWidth - 10; y = original.getHeight() - 10; }
-                    case CENTER -> { x = (original.getWidth() - textWidth) / 2; y = original.getHeight() / 2; }
-                    default -> { x = 10; y = original.getHeight() - 10; }
-                }
+                x = switch (position) {
+                    case TOP_LEFT -> 10;
+                    case TOP_RIGHT -> original.getWidth() - textWidth - 10;
+                    case BOTTOM_LEFT -> 10;
+                    case BOTTOM_RIGHT -> original.getWidth() - textWidth - 10;
+                    case CENTER -> (original.getWidth() - textWidth) / 2;
+                };
+                y = switch (position) {
+                    case TOP_LEFT, TOP_RIGHT -> textHeight + 10;
+                    case BOTTOM_LEFT, BOTTOM_RIGHT -> original.getHeight() - 10;
+                    case CENTER -> original.getHeight() / 2;
+                };
 
                 g2d.setColor(Color.BLACK);
                 g2d.drawString(watermarkText, x + 1, y + 1);
