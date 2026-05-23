@@ -1267,11 +1267,232 @@ private void addDefaultQueryParams(
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+### 5.3 HTTP 请求超时详解
+
+#### 5.3.1 超时概念对比图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         HTTP 请求各阶段超时                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  客户端                          服务器                                     │
+│    │                               │                                        │
+│    │  ① connectionRequestTimeout  │                                        │
+│    │  ────────────────────────▶   │  从连接池获取连接                       │
+│    │                               │  (池中无可用连接时等待)                  │
+│    │                               │                                        │
+│    │  ② connectTimeout            │                                        │
+│    │  ────────────────────────▶   │  建立 TCP 连接                          │
+│    │                               │  (三次握手)                             │
+│    │                               │                                        │
+│    │  发送 HTTP 请求               │                                        │
+│    │  ────────────────────────▶   │                                        │
+│    │                               │                                        │
+│    │  ③ socketTimeout             │                                        │
+│    │  ────────────────────────◀   │  ★ Socket 级别读取超时                  │
+│    │                               │  等待每个数据包                         │
+│    │                               │  (即 HttpClient 5 的 socketTimeout)    │
+│    │                               │                                        │
+│    │  ④ responseTimeout           │                                        │
+│    │  ────────────────────────◀   │  等待完整 HTTP 响应                     │
+│    │                               │  (从发送请求到收到完整响应)              │
+│    │                               │                                        │
+│    │  接收完整响应                 │                                        │
+│    │                               │                                        │
+│                                                                             │
+│  配置位置：                                                                  │
+│  ─────────────────────────────────────                                     │
+│  ① connectionRequestTimeout → RequestConfig                                │
+│  ② connectTimeout           → ConnectionConfig（HttpClient 5 新位置）       │
+│  ③ socketTimeout            → ConnectionConfig（= 原 readTimeout）         │
+│  ④ responseTimeout          → RequestConfig                                │
+│                                                                             │
+│  Feign 层面：                                                                │
+│  ─────────────────────────────────────                                     │
+│  • connectTimeout  → Feign 通过 Request.Options 控制                       │
+│  • readTimeout     → Feign 通过 Request.Options 控制                       │
+│    └── Feign 的 readTimeout 实际控制的是 socketTimeout + responseTimeout   │
+│    └── 优先级高于 HttpClient 层面配置                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5.3.2 HttpClient 5 超时配置架构
+
+HttpClient 5 将超时配置**分散到三个不同的 Config 类**：
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    HttpClient 5 超时配置架构                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  RequestConfig（请求级别）                                              │ │
+│  │  源码位置: org.apache.hc.client5.http.config.RequestConfig             │ │
+│  │  ═══════════════════════════════════════════════════════════════════  │ │
+│  │  • connectionRequestTimeout  - 从连接池获取连接超时                    │ │
+│  │                                 默认值: 3 分钟                         │ │
+│  │                                                                       │ │
+│  │  • responseTimeout           - 等待 HTTP 响应完成超时                  │ │
+│  │                                 默认值: null（无限）                   │ │
+│  │                                                                       │ │
+│  │  • connectTimeout            - ⚠️ 已弃用（since 5.2）                 │ │
+│  │                                 建议使用 ConnectionConfig             │ │
+│  │                                                                       │ │
+│  │  ⚠️ 注意：RequestConfig 中没有 socketTimeout/readTimeout！            │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  ConnectionConfig（连接级别，since 5.2）                               │ │
+│  │  源码位置: org.apache.hc.client5.http.config.ConnectionConfig          │ │
+│  │  ═══════════════════════════════════════════════════════════════════  │ │
+│  │  • connectTimeout            - 建立 TCP 连接超时                      │ │
+│  │                                 默认值: 3 分钟                         │ │
+│  │                                                                       │ │
+│  │  • socketTimeout             - ★ Socket I/O 超时                      │ │
+│  │                                 默认值: null（无限）                   │ │
+│  │                                 ★ 就是原来的 readTimeout！            │ │
+│  │                                                                       │ │
+│  │  • validateAfterInactivity   - 连接空闲后验证超时                     │ │
+│  │  • timeToLive                - 连接存活时间                          │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  SocketConfig（Socket 级别，HttpCore5）                                │ │
+│  │  源码位置: org.apache.hc.core5.http.io.SocketConfig                    │ │
+│  │  ═══════════════════════════════════════════════════════════════════  │ │
+│  │  • soTimeout                 - Socket 读取超时（底层 SO_TIMEOUT）      │ │
+│  │  • soLinger                  - Socket 关闭 linger                    │ │
+│  │  • tcpNoDelay                - TCP_NODELAY                          │ │
+│  │                                                                       │ │
+│  │  注：ConnectionConfig.socketTimeout 最终会设置 SocketConfig.soTimeout │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5.3.3 HttpClient 4.x vs 5.x 超时命名变化
+
+| 超时类型 | HttpClient 4.x | HttpClient 5.x | 配置位置 |
+|----------|----------------|-----------------|----------|
+| 连接超时 | `connectionTimeout` | `connectTimeout` | **ConnectionConfig** |
+| Socket 读取超时 | `soTimeout` | `socketTimeout` | **ConnectionConfig** |
+| 连接请求超时 | `connectionRequestTimeout` | `connectionRequestTimeout` | **RequestConfig** |
+| 等待响应超时 | ❌ 无 | `responseTimeout` | **RequestConfig** |
+
+**核心变化：`readTimeout` 在 HttpClient 5 中改名为 `socketTimeout`，且移到了 `ConnectionConfig` 中。**
+
+#### 5.3.4 Feign 层 vs HttpClient 层超时控制
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         HTTP 请求超时控制层次                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  Feign 层（spring.cloud.openfeign.client.config）                      │ │
+│  │  ═══════════════════════════════════════════════════════════════════  │ │
+│  │  • connectTimeout: 建立 TCP 连接超时                                   │ │
+│  │  • readTimeout: 等待响应数据读取超时                                   │ │
+│  │                                                                       │ │
+│  │  特点：                                                                │ │
+│  │  • 可按 FeignClient 分别配置（不同服务不同超时）                        │ │
+│  │  • 优先级最高，会覆盖 HttpClient 层面的配置                            │ │
+│  │  • 通过 Request.Options 设置                                          │ │
+│  │                                                                       │ │
+│  │  源码位置: FeignClientFactoryBean.configureUsingProperties()          │ │
+│  │              第 276-282 行                                            │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                          │                                                  │
+│                          ▼                                                  │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  HttpClient 5 层（spring.cloud.openfeign.httpclient）                  │ │
+│  │  ═══════════════════════════════════════════════════════════════════  │ │
+│  │  • connectionTimeout: TCP 连接超时                                    │ │
+│  │  • socketTimeout: Socket 读取超时（= 旧版 readTimeout）               │ │
+│  │  • connectionRequestTimeout: 从连接池获取连接超时                     │ │
+│  │                                                                       │ │
+│  │  特点：                                                                │ │
+│  │  • 全局配置，所有 FeignClient 共用                                    │ │
+│  │  • 作为 Feign 层面的默认值（如果没有在 Feign 层配置）                  │ │
+│  │  • 通过 ConnectionConfig + RequestConfig 设置                        │ │
+│  │                                                                       │ │
+│  │  源码位置: HttpClient5FeignConfiguration                              │ │
+│  │              第 72-108 行                                             │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                          │                                                  │
+│                          ▼                                                  │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │  TCP Socket 层                                                         │ │
+│  │  ═══════════════════════════════════════════════════════════════════  │ │
+│  │  • SO_TIMEOUT: Socket 读取超时（底层）                                │ │
+│  │  • 由 HttpClient 的 socketTimeout 控制                                │ │
+│  │                                                                       │ │
+│  │  特点：                                                                │ │
+│  │  • 最底层超时控制                                                     │ │
+│  │  • 直接影响 Socket.read() 操作                                        │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                                                                             │
+│  ════════════════════════════════════════════════════════════════════════ │
+│                                                                             │
+│  配置优先级：                                                                │
+│  Feign 层 readTimeout > HttpClient 层 socketTimeout > Socket 层 SO_TIMEOUT │
+│                                                                             │
+│  推荐做法：使用 Feign 层的 readTimeout，更灵活可按服务配置                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 5.3.5 超时配置示例
+
+```yaml
+# 推荐配置方式
+spring:
+  cloud:
+    openfeign:
+      # ════════════════════════════════════════════════════
+      # Feign 层配置（推荐使用，可按服务区分）
+      # ════════════════════════════════════════════════════
+      client:
+        config:
+          # 全局默认
+          default:
+            connectTimeout: 5000      # 连接超时 5秒
+            readTimeout: 30000        # 读取超时 30秒
+
+          # 特定服务（覆盖默认值）
+          user-service:
+            connectTimeout: 3000      # 连接超时 3秒
+            readTimeout: 10000        # 读取超时 10秒
+
+          payment-service:            # 支付服务需要更长超时
+            connectTimeout: 5000
+            readTimeout: 60000        # 读取超时 60秒
+
+      # ════════════════════════════════════════════════════
+      # HttpClient 层配置（全局默认，作为 Feign 的后备）
+      # ════════════════════════════════════════════════════
+      httpclient:
+        connection-timeout: 5000      # TCP 连接超时
+        
+        # 连接池配置
+        max-connections: 200          # 最大连接数
+        max-connections-per-route: 50 # 每路由最大连接
+        
+        # HC5 特定配置
+        hc5:
+          socket-timeout: 30          # Socket 超时（备用）
+          socket-timeout-unit: SECONDS
+          connection-request-timeout: 1  # 从连接池获取连接超时
+          connection-request-timeout-unit: MINUTES
+```
+
 ---
 
 ## 六、配置示例
 
-### 5.1 配置文件示例
+### 6.1 配置文件示例
 
 ```yaml
 # application.yml
@@ -1362,7 +1583,7 @@ spring:
               channel: ["email"]
 ```
 
-### 5.2 Configuration Bean 示例
+### 6.2 Configuration Bean 示例
 
 ```java
 /**
@@ -1517,7 +1738,7 @@ public class OrderServiceFeignConfig {
 }
 ```
 
-### 5.3 FeignClientConfigurer 控制继承（OpenFeign 4.x 新增）
+### 6.3 FeignClientConfigurer 控制继承（OpenFeign 4.x 新增）
 
 ```java
 /**
@@ -1543,7 +1764,7 @@ public class NoInheritConfig implements FeignClientConfigurer {
  */
 ```
 
-### 5.4 FeignClient 声明示例
+### 6.4 FeignClient 声明示例
 
 ```java
 /**
