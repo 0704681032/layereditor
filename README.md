@@ -180,6 +180,9 @@ feign:
     socket-timeout: 60000
 ```
 
+更完整的 OpenFeign + HttpClient5 超时、连接池容量估算和生产建议见：
+[OpenFeign-HttpClient5-超时与连接池配置指南.md](./OpenFeign-HttpClient5-超时与连接池配置指南.md)
+
 ## 快速启动
 
 ### 一键启动（推荐）
