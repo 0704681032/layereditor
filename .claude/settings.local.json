@@ -191,7 +191,28 @@
       "Bash(break)",
       "Bash(cat src/main/resources/logback-spring.xml)",
       "Bash(cat src/main/resources/logback.xml)",
-      "Bash(jobs -l)"
+      "Bash(jobs -l)",
+      "Bash(git config *)",
+      "Bash(pkill -f \"chrome-devtools-mcp\")",
+      "Bash(pkill -f \"Google Chrome.*--user-data-dir=.*chrome-devtools-mcp\")",
+      "Read(//Users/jyy/.claude/**)",
+      "Read(//Users/jyy/.config/claude/**)",
+      "Bash(pkill -9 -f \"Google Chrome\")",
+      "Bash(pkill -9 -f \"Chromium\")",
+      "Bash(rm -rf ~/.cache/chrome-devtools-mcp/chrome-profile)",
+      "mcp__web-search-prime__web_search_prime",
+      "WebFetch(domain:www.bookstack.cn)",
+      "WebFetch(domain:blog.csdn.net)",
+      "WebFetch(domain:cloud.tencent.com)",
+      "Read(//private/tmp/**)",
+      "Bash(rm -rf openfeign-sources)",
+      "Bash(mkdir openfeign-sources *)",
+      "Bash(unzip -q ~/.m2/repository/org/springframework/cloud/spring-cloud-openfeign-core/4.1.3/spring-cloud-openfeign-core-4.1.3-sources.jar -d openfeign-sources)",
+      "WebFetch(domain:github.com)",
+      "Bash(rm -rf httpclient5-sources)",
+      "Bash(mkdir httpclient5-sources *)",
+      "Bash(unzip -q ~/.m2/repository/org/apache/httpcomponents/client5/httpclient5/5.3.1/httpclient5-5.3.1-sources.jar -d httpclient5-sources)",
+      "Bash(xargs -I {} sh -c 'cd /tmp && rm -rf httpcore5-sources && mkdir httpcore5-sources && unzip -q {} -d httpcore5-sources')"
     ]
   }
 }
