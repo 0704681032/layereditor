@@ -4,18 +4,138 @@
 
 当 `@FeignClient` 的 `name` 和 `contextId` 为 `direct-OneServiceSao` 时，如何正确配置超时时间。
 
+## 两层超时架构
+
+OpenFeign 的超时由两层协作完成，Feign 层优先：
+
+```
+请求发出
+  │
+  ├─ HttpClient 层（连接池管理，兜底）
+  │   ├─ connection-timeout           建立 TCP 连接
+  │   ├─ connection-request-timeout   从连接池获取连接
+  │   └─ time-to-live                 连接池中连接存活时间
+  │
+  ├─ Feign 层（精确控制，优先级更高）
+  │   ├─ connectTimeout              连接超时
+  │   └─ readTimeout                 读取超时
+  │
+  └─ 返回响应
+```
+
+**原则：HttpClient 层管建连接（兜底），Feign 层管读写数据（精确控制，优先）。**
+
+### HttpClient 层参数一览
+
+| 参数 | 含义 | 生产建议 |
+|------|------|----------|
+| `connection-timeout` | 建立 TCP/TLS 连接的超时 | 10000ms（兜底值） |
+| `connection-request-timeout` | 从连接池获取连接的等待时间 | 100-1000ms |
+| `time-to-live` | 连接池中连接存活时间 | 600s（10分钟） |
+| `max-connections` | 全局最大连接数 | 按并发估算 |
+| `max-connections-per-route` | 单个目标地址最大连接数 | 按下游峰值 QPS 估算 |
+
+> 注意：HttpClient 层没有 `socket-timeout` 的自动配置属性，读超时统一由 Feign 的 `readTimeout` 控制。
+
+## POM 依赖
+
+### 底层 HttpClient 选型（三选一，不要同时引入）
+
+| 依赖 | 底层 | 适用场景 | 切换配置 |
+|------|------|----------|----------|
+| `feign-httpclient` | Apache HttpClient 4.x | 老项目，稳定 | `feign.httpclient.enabled=true` |
+| `feign-hc5` | Apache HttpClient 5.x | 新项目推荐，性能更好 | `feign.httpclient.hc5.enabled=true` |
+| `feign-okhttp` | OkHttp | 轻量场景 | `feign.okhttp.enabled=true` |
+
+### 老版本（Spring Cloud Netflix Feign）
+
+```xml
+<!-- Feign Starter（老版） -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-feign</artifactId>
+    <version>1.4.7.RELEASE</version>
+</dependency>
+
+<!-- Apache HttpClient 4.x -->
+<dependency>
+    <groupId>io.github.openfeign</groupId>
+    <artifactId>feign-httpclient</artifactId>
+    <version>10.12</version>
+</dependency>
+```
+
+### 新版本（Spring Cloud OpenFeign）
+
+```xml
+<!-- Feign Starter（新版） -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+
+<!-- Apache HttpClient 5.x（推荐） -->
+<dependency>
+    <groupId>io.github.openfeign</groupId>
+    <artifactId>feign-hc5</artifactId>
+</dependency>
+
+<!-- 或 OkHttp -->
+<!--
+<dependency>
+    <groupId>io.github.openfeign</groupId>
+    <artifactId>feign-okhttp</artifactId>
+</dependency>
+-->
+```
+
 ## 配置方式
 
 ### 老版本（2.x / Spring Boot 2）— application.properties
 
 ```properties
-# 全局默认超时
+# HttpClient 层（兜底）
+feign.httpclient.enabled=true
+feign.httpclient.connection-timeout=10000
+feign.httpclient.connection-request-timeout=3000
+feign.httpclient.time-to-live=900
+feign.httpclient.max-connections=200
+feign.httpclient.max-connections-per-route=50
+
+# Feign 层（精确控制，优先）
 feign.client.config.default.connectTimeout=3000
 feign.client.config.default.readTimeout=5000
 
-# 针对 direct-OneServiceSao 的超时
+# 针对特定服务的超时
 feign.client.config.direct-OneServiceSao.connectTimeout=5000
 feign.client.config.direct-OneServiceSao.readTimeout=10000
+```
+
+### 老版本（2.x / Spring Boot 2）— YAML 完整示例
+
+```yaml
+feign:
+  httpclient:
+    enabled: true
+    connection-timeout: 10000
+    connection-request-timeout: 3000
+    time-to-live: 900
+    max-connections: 200
+    max-connections-per-route: 50
+  client:
+    config:
+      default:
+        connectTimeout: 3000
+        readTimeout: 5000
+      internal-fast:
+        connectTimeout: 500
+        readTimeout: 1000
+      third-party:
+        connectTimeout: 5000
+        readTimeout: 15000
+      ai-service:
+        connectTimeout: 5000
+        readTimeout: 60000
 ```
 
 ### 新版本（3.x / Spring Boot 3）— application.properties
@@ -30,23 +150,46 @@ spring.cloud.openfeign.client.config.direct-OneServiceSao.connectTimeout=5000
 spring.cloud.openfeign.client.config.direct-OneServiceSao.readTimeout=10000
 ```
 
-### YAML 格式（3.x）
+### 新版本（3.x / Spring Boot 3）— YAML 完整示例
 
 ```yaml
 spring:
   cloud:
     openfeign:
+      httpclient:
+        hc5:
+          enabled: true
+        connection-timeout: 10000
+        connection-request-timeout: 3000
+        time-to-live: 600
+        max-connections: 200
+        max-connections-per-route: 50
       client:
         config:
           default:
             connectTimeout: 3000
             readTimeout: 5000
-          direct-OneServiceSao:
+          internal-fast:
+            connectTimeout: 500
+            readTimeout: 1000
+          third-party:
             connectTimeout: 5000
-            readTimeout: 10000
+            readTimeout: 15000
+          ai-service:
+            connectTimeout: 5000
+            readTimeout: 60000
 ```
 
-> 单位均为毫秒。特定服务的配置优先级高于 `default`。
+> 单位均为毫秒（除 `time-to-live` 配合 `time-to-live-unit` 使用时）。特定服务的配置优先级高于 `default`。
+
+### 新老版本配置前缀对比
+
+| 版本 | Feign 层配置前缀 | HttpClient 层配置前缀 |
+|------|-----------------|---------------------|
+| 老版（2.x） | `feign.client.config.*` | `feign.httpclient.*` |
+| 新版（3.x） | `spring.cloud.openfeign.client.config.*` | `feign.httpclient.*`（不变） |
+
+> 核心区别仅在 Feign 层的命名空间。`httpclient` 相关配置在两个版本中都在 `feign.httpclient.*` 下，没有变化。
 
 ## 源码分析：为什么 key 中的 `-` 不需要去掉
 
