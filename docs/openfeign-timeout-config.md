@@ -61,7 +61,7 @@ OpenFeign 的超时由两层协作完成，Feign 层优先：
 <dependency>
     <groupId>io.github.openfeign</groupId>
     <artifactId>feign-httpclient</artifactId>
-    <version>10.12</version>
+    <version>9.5.0</version>
 </dependency>
 ```
 
