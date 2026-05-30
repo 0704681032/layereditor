@@ -39,12 +39,25 @@ OpenFeign 的超时由两层协作完成，Feign 层优先：
 
 ## POM 依赖
 
+### 版本对应关系
+
+| Spring Boot | Spring Cloud | Feign Starter | HttpClient 依赖 | feign 版本 |
+|---|---|---|---|---|
+| 1.5.x | Edgware | `spring-cloud-starter-feign` 1.4.x | `feign-httpclient` | 9.5.0 |
+| 2.0.x | Finchley | `spring-cloud-starter-openfeign` 2.0.x | `feign-httpclient` | ~9.5.1 |
+| 2.1.x | Greenwich | `spring-cloud-starter-openfeign` 2.1.x | `feign-httpclient` | ~10.1 |
+| 2.2.x | Hoxton | `spring-cloud-starter-openfeign` 2.2.x | `feign-httpclient` | ~11.0 |
+| 2.4.x–2.7.x | 2020.x / 2021.x | `spring-cloud-starter-openfeign` 3.x | `feign-httpclient` | ~11.8+ |
+| **3.x** | **2022.x+** | **`spring-cloud-starter-openfeign` 4.x** | **`feign-hc5`** | **BOM 管理** |
+
+> 本项目使用 Spring Boot 3.3.6 + Spring Cloud 2023.0.3，采用 `feign-hc5`，版本由 BOM 控制，无需手动指定。
+
 ### 底层 HttpClient 选型（三选一，不要同时引入）
 
 | 依赖 | 底层 | 适用场景 | 切换配置 |
 |------|------|----------|----------|
-| `feign-httpclient` | Apache HttpClient 4.x | 老项目，稳定 | `feign.httpclient.enabled=true` |
-| `feign-hc5` | Apache HttpClient 5.x | 新项目推荐，性能更好 | `feign.httpclient.hc5.enabled=true` |
+| `feign-httpclient` | Apache HttpClient 4.x | 老项目（Boot 1.x/2.x），稳定 | `feign.httpclient.enabled=true` |
+| `feign-hc5` | Apache HttpClient 5.x | 新项目（Boot 3.x）推荐，性能更好 | `feign.httpclient.hc5.enabled=true` |
 | `feign-okhttp` | OkHttp | 轻量场景 | `feign.okhttp.enabled=true` |
 
 ### 老版本（Spring Cloud Netflix Feign）
