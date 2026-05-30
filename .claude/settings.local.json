@@ -212,7 +212,18 @@
       "Bash(rm -rf httpclient5-sources)",
       "Bash(mkdir httpclient5-sources *)",
       "Bash(unzip -q ~/.m2/repository/org/apache/httpcomponents/client5/httpclient5/5.3.1/httpclient5-5.3.1-sources.jar -d httpclient5-sources)",
-      "Bash(xargs -I {} sh -c 'cd /tmp && rm -rf httpcore5-sources && mkdir httpcore5-sources && unzip -q {} -d httpcore5-sources')"
+      "Bash(xargs -I {} sh -c 'cd /tmp && rm -rf httpcore5-sources && mkdir httpcore5-sources && unzip -q {} -d httpcore5-sources')",
+      "Bash(mvn spring-boot:run -q)",
+      "Bash(where pg_ctl)",
+      "Bash(dir \"D:\\\\\\\\Program Files\\\\\\\\PostgreSQL\")",
+      "Bash(dir \"C:\\\\\\\\Program Files\\\\\\\\PostgreSQL\")",
+      "Bash(where psql *)",
+      "Bash(where opencode *)",
+      "Bash(npm list *)",
+      "Bash(npm uninstall *)",
+      "Bash(opencode *)",
+      "Bash(mcp list-tools *)",
+      "WebFetch(domain:spring.io)"
     ]
   }
 }

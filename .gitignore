@@ -24,3 +24,15 @@ Thumbs.db
 
 # Uploads (local development)
 backend/uploads/
+
+# Temporary screenshots and test images (root level)
+/*.png
+
+# Temporary files
+*.xlsx
+test_snapshots/
+files-backup/
+
+# Claude Code local settings
+.claude/settings.local.json
+.claude/worktrees/
