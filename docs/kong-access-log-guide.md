@@ -292,10 +292,10 @@ curl -v http://upstream-host:8080/api/endpoint 2>&1 | grep -i transfer-encoding
 | 原因 | uct 表现 | 解决 |
 |------|---------|------|
 | DNS 解析慢 | 首次请求 uct 高，后续正常 | 配置 `dns_resolver`，启用 `dns_cache` |
-| TCP 队列满 | 高并发时 uct 飙升 | 调大上游 `somaxconn`，检查 backlog |
+| 上游 TCP 队列满 | 高并发时 uct 飙升 | 调大上游 `somaxconn`，检查 backlog |
 | 跨区域/跨机房 | 所有请求 uct 都高 | 同机房部署，减少网络跳数 |
 | SSL 握手慢 | HTTPS 上游 uct 比 HTTP 高 50ms+ | 启用 session reuse，检查证书链长度 |
-| 连接池耗尽 | 突发时 uct 从 1ms 跳到 100ms+ | 调大 `upstream_keepalive` |
+| Kong keepalive 池耗尽 | 突发时 uct 从 1ms 跳到 100ms+ | 调大 `upstream_keepalive` |
 | **网络丢包** | **1s/3s/7s 整数秒跳变** | 见下方详细分析 |
 
 ### 网络丢包对 uct 的影响（重点）
@@ -347,7 +347,7 @@ rt=3.058 uct=3.003 uht=3.052 urt=3.055
 | DNS 慢 | 首次高，后续正常 | 周期性（跟 DNS TTL 一致） |
 | TCP 队列满 | 高并发时持续高 | 跟 QPS 正相关 |
 | 跨区域 | 所有请求都高 | 持续稳定（如 30ms） |
-| 连接池耗尽 | 高峰期偶尔高 | 跟流量正相关 |
+| Kong keepalive 池耗尽 | 高峰期偶尔高 | 跟流量正相关 |
 
 #### 丢包排查命令
 
@@ -873,7 +873,7 @@ curl -X PATCH http://localhost:8001/upstreams/my-upstream/targets/{target-id} \
 
 ---
 
-### 案例 6：连接池耗尽导致高峰期 uct 飙升
+### 案例 6：Kong keepalive 连接池耗尽导致高峰期 uct 飙升
 
 **现象：** 平时 uct 稳定在 2ms，但每天 10:00-11:00 流量高峰期 uct 飙到 100-500ms，非高峰期立刻恢复。
 
@@ -891,7 +891,7 @@ awk '/uct=/{for(i=1;i<=NF;i++) if($i~/^uct=/) print substr($i,5)+0}' /var/log/ko
 
 **Step 2 — 判断**
 
-uct 随 QPS 升高 → 典型的连接池耗尽特征。QPS 升高时，需要新建连接（TCP 三次握手），排队等可用连接。
+uct 随 QPS 升高 → 典型的 Kong keepalive 连接池耗尽特征。QPS 升高时，Kong 的空闲连接不够用，需要频繁新建 TCP 连接（三次握手），排队等可用连接。
 
 ```bash
 # 查看 Kong 当前连接池配置
@@ -915,7 +915,7 @@ grep upstream_keepalive /usr/local/kong/conf/kong.conf
 
 ```ini
 # kong.conf
-upstream_keepalive = 300       # 调大连接池
+upstream_keepalive = 300       # 调大 Kong 到上游的 keepalive 连接池
 upstream_keepalive_timeout = 60000  # 保持 60s
 ```
 
@@ -938,7 +938,7 @@ Step 2：看哪一层最大
     │                     ├── nc -zv 测试 TCP 连接
     │                     ├── dig 测试 DNS
     │                     ├── mtr 查链路质量
-    │                     └── 对比高峰/非高峰 → 连接池？
+    │                     └── 对比高峰/非高峰 → Kong keepalive 池？
     │
     ├── uht-uct 最大    → Step 3b：查上游服务
     │                     ├── curl 直连验证
