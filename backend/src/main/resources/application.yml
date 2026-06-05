@@ -37,9 +37,11 @@ spring:
           default:
             connectTimeout: 5000
             readTimeout: 10000
+            loggerLevel: BASIC
           volcengine-visual:
             connectTimeout: 5000
             readTimeout: 60000  # AI处理可能需要较长时间
+            loggerLevel: FULL
 
 # HTTP连接池配置 (用于OpenFeign + HttpClient5)
 feign:
@@ -50,6 +52,11 @@ feign:
     socket-timeout: 60000
     connection-ttl: 1800000
     idle-timeout: 600000
+
+# Feign 日志级别必须设为 DEBUG，否则不会输出请求/响应日志
+logging:
+  level:
+    com.example.editor.ai.client: DEBUG
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
