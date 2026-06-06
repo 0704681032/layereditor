@@ -8,8 +8,8 @@
 
 | 问题 | 答案 |
 |:-----|:-----|
-| 新分区会继承父表索引吗？ | ✅ 会，自动创建同名同构索引 |
-| 父表能直接 `CONCURRENTLY` 建索引吗？ | PG 12+ 支持，但内部串行扫分区，不如手动并行快 |
+| 新分区会继承父表索引吗？ | ✅ 会，按定义自动创建同构索引（不依赖索引名） |
+| 父表能直接 `CONCURRENTLY` 建索引吗？ | ❌ 不支持（到 PG 18 都不支持），必须逐分区建 |
 | UNIQUE 约束有什么限制？ | 必须包含分区键列 |
 | `CONCURRENTLY` 能放在事务里吗？ | ❌ 不能，每条必须独立执行 |
 
@@ -29,7 +29,7 @@
 | 特性 | 说明 |
 |:-----|:-----|
 | 自动继承 | 父表建索引 → 所有分区（含未来分区）自动创建 |
-| 索引名自动生成 | 分区上的索引名由 PG 自动命名 |
+| 索引名不限 | PG 按**定义**（列、opclass、排序）匹配，不依赖索引名 |
 | UNIQUE / PRIMARY KEY | 支持继承，但约束列**必须包含分区键** |
 | CONCURRENTLY | 不能在事务中执行，必须逐条独立运行 |
 | 级联删除 | 删除父表索引会级联删除所有分区索引 |
@@ -54,9 +54,10 @@ CREATE UNIQUE INDEX idx_orders_id ON orders (id, created_at);
 
 ### Step 1：逐个分区并发建索引
 
-对每个已有分区单独使用 `CONCURRENTLY`，**不阻塞读写**：
+对每个已有分区单独使用 `CONCURRENTLY`，**不阻塞读写**。索引名称不限，PG 最终按定义匹配：
 
 ```sql
+-- 索引名称可以不同，PG 按（列、opclass、排序方向）匹配
 CREATE INDEX CONCURRENTLY idx_orders_status ON orders_2026_01 (status);
 CREATE INDEX CONCURRENTLY idx_orders_status ON orders_2026_02 (status);
 CREATE INDEX CONCURRENTLY idx_orders_status ON orders_2026_03 (status);
@@ -85,7 +86,7 @@ ORDER BY c.relname;
 
 ### Step 2：父表创建索引（瞬间完成）
 
-等所有分区索引建好后，在父表上创建索引。PG 发现子分区已有同名索引会直接复用，**不重新扫表**：
+等所有分区索引建好后，在父表上创建索引。PG 按定义自动匹配各分区已有索引并 Attach，**不重新扫表**：
 
 ```sql
 -- 注意：不加 CONCURRENTLY
@@ -156,7 +157,7 @@ ORDER BY inhrelid::regclass::text;
 
 ### Q1：父表直接 `CREATE INDEX CONCURRENTLY` 行不行？
 
-PG 12+ 支持，但内部仍然是**逐分区串行**扫描，不如手动开多 session 并行跑快。PG 11 及以下直接报错。
+**不行。** PG 至今（到 v18）**不支持**在分区表上使用 `CONCURRENTLY`，会直接报错。必须逐分区手动执行。
 
 ### Q2：Step 1 中各分区的索引名需要一致吗？
 
