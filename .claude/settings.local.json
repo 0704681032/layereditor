@@ -223,7 +223,12 @@
       "Bash(npm uninstall *)",
       "Bash(opencode *)",
       "Bash(mcp list-tools *)",
-      "WebFetch(domain:spring.io)"
+      "WebFetch(domain:spring.io)",
+      "Bash(git remote *)",
+      "WebFetch(domain:1.mjjspeed.icu)",
+      "Bash(pkill -9 -f \"chrome-devtools\")",
+      "Bash(pkill -9 -f \"mcp\")",
+      "Bash(grep -E \"\\\\.\\(md|xml|yml|yaml|properties|java\\)$\")"
     ]
   }
 }
