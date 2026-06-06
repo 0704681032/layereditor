@@ -103,6 +103,25 @@ CREATE TABLE orders_2026_07 PARTITION OF orders
     FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
 ```
 
+这条语句的含义：
+
+| 部分 | 说明 |
+|:-----|:-----|
+| `CREATE TABLE orders_2026_07` | 创建一个名为 `orders_2026_07` 的表 |
+| `PARTITION OF orders` | 声明它是父表 `orders` 的一个**子分区** |
+| `FOR VALUES FROM (...) TO (...)` | 按范围（RANGE）指定该分区存储哪些数据 |
+
+数据路由规则 —— 插入父表时 PG 自动根据分区键分派：
+
+```
+orders（父表，按 order_date 范围分区）
+  ├── orders_2026_06  ← 2026-06-01 ≤ order_date < 2026-07-01
+  ├── orders_2026_07  ← 2026-07-01 ≤ order_date < 2026-08-01  ← 本语句创建
+  └── orders_2026_08  ← 2026-08-01 ≤ order_date < 2026-09-01
+```
+
+> `FROM` 是闭区间（包含），`TO` 是开区间（不包含），即 `[2026-07-01, 2026-08-01)`。
+
 PG 发现父表上有 `idx_orders_status`，自动在新分区上创建对应索引，**无需额外操作**。
 
 ---
